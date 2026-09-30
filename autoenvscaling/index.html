@@ -92,6 +92,31 @@
   <p>The proposer earns 1 for an admitted task, &minus;0.25 if calibration fails, and &minus;1 if validation fails. The solver earns the fraction of tests it passes.</p>
 </section>
 
+
+<section class="section" id="results">
+  <h2>Experiments</h2>
+
+  <h3>Does Environment Design Benefit from a Terminal?</h3>
+  <p>Valid-environment rate of eight frontier proposers. <b>Prompt</b> writes the task in one response; <b>Prompt + Env Feedback</b> also sees build and test errors; <b>AutoEnvScaling</b> works in a terminal.</p>
+  <div id="chart-valid" class="chart-root"></div>
+  <p>Environments built in a terminal are richer and harder: more data files, longer solver trajectories, and a lower solver pass rate.</p>
+  <div id="chart-artifacts" class="chart-root"></div>
+
+  <h3>Results</h3>
+  <p><b>AutoEnvScaling outperforms static environment pools.</b> Held-out Terminal-Bench 2.1 (avg@5) after RL on environments from a frontier proposer, against the static Tmax pool at matched training steps (left).</p>
+  <p><b>Recursive self-improvement.</b> Qwen3.6-35B-A3B acts as both proposer and solver: it builds environments for itself, trains on them, and improves in both roles. All runs start from the same Cold-Start checkpoint (right).</p>
+  <div class="chart-pair">
+    <div id="chart-solver" class="chart-root"></div>
+    <div id="chart-selfplay" class="chart-root"></div>
+  </div>
+  <p><b>Training dynamics.</b> The curriculum stays at the solver's level: AutoEnvScaling keeps 3.1&times; as many rollout groups useful for training as Tmax, so collecting rollouts for each update takes 42% less time.</p>
+  <div id="chart-training" class="chart-root"></div>
+
+  <h3>Beyond Task Performance: Learning Behavior</h3>
+  <p>AutoEnvScaling can also write environments that teach a behavior. On HiL-Bench, instructions leave out information the agent needs, and it must ask for it with an <code>ask_human</code> tool. We train Qwen3.6-35B-A3B on software engineering tasks and evaluate on held-out HiL-Bench tasks.</p>
+  <div id="table-hil" class="chart-root"></div>
+</section>
+
 <section class="section" id="qualitative">
   <h2>Qualitative Study for AutoEnvScaling</h2>
   <div class="subsection" id="replay">
@@ -103,30 +128,6 @@
   <p>The same failed run, handed to GPT-5.6-sol, Claude Opus 5, and the Cold-Start Qwen3.6-35B-A3B that we train for recursive self-improvement. Each column shows how the proposer spent its turns, three moments from its episode, and the environment it shipped.</p>
   <div id="compare-app" class="app-root"><p class="loading">Loading cases…</p></div>
   </div>
-</section>
-
-<section class="section" id="results">
-  <h2>Experiments</h2>
-
-  <h3>Does Environment Design Benefit from a Terminal?</h3>
-  <p>Valid-environment rate of eight frontier proposers. <b>Prompt</b> writes the task in one response; <b>Prompt + Env Feedback</b> also sees build and test errors; <b>AutoEnvScaling</b> works in a terminal.</p>
-  <div id="chart-valid" class="chart-root"></div>
-  <p>Environments built in a terminal are richer and harder: more data files, longer solver trajectories, and a lower solver pass rate.</p>
-  <div id="chart-artifacts" class="chart-root"></div>
-
-  <h3>AutoEnvScaling Outperforms Static Environment Pools</h3>
-  <p>Held-out Terminal-Bench 2.1 (avg@5) after RL on environments from a frontier proposer, against the static Tmax pool at matched training steps.</p>
-  <div id="chart-solver" class="chart-root"></div>
-
-  <h3>Recursive Self-Improvement</h3>
-  <p>Qwen3.6-35B-A3B acts as both proposer and solver: it builds environments for itself, trains on them, and improves in both roles. All runs start from the same Cold-Start checkpoint.</p>
-  <div id="chart-selfplay" class="chart-root"></div>
-  <p>The curriculum stays at the solver's level: AutoEnvScaling keeps 3.1&times; as many rollout groups useful for training as Tmax, so collecting rollouts for each update takes 42% less time.</p>
-  <div id="chart-training" class="chart-root"></div>
-
-  <h3>Beyond Task Performance: Learning Behavior</h3>
-  <p>AutoEnvScaling can also write environments that teach a behavior. On HiL-Bench, instructions leave out information the agent needs, and it must ask for it with an <code>ask_human</code> tool. We train Qwen3.6-35B-A3B on software engineering tasks and evaluate on held-out HiL-Bench tasks.</p>
-  <div id="table-hil" class="chart-root"></div>
 </section>
 
 <section class="section" id="environments">

@@ -71,7 +71,9 @@ main { max-width: var(--col); margin: 0 auto; padding: 0 20px; }
 .section > h3 { font-size: 17.5px; margin: 28px 0 6px; }
 .section > p, .subsection > p { margin: 0 0 12px; }
 .subsection + .subsection { margin-top: 40px; }
-#chart-selfplay { max-width: 640px; margin-left: auto; margin-right: auto; }
+.chart-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; margin-bottom: 30px; }
+.chart-pair > .chart-root { margin-bottom: 0; }
+@media (max-width: 860px) { .chart-pair { grid-template-columns: minmax(0, 1fr); gap: 0; } .chart-pair > .chart-root { margin-bottom: 30px; } }
 .loading { color: var(--muted); font-style: italic; }
 .app-root, .chart-root { min-height: 80px; margin-top: 14px; }
 .chart-root { margin-bottom: 30px; }

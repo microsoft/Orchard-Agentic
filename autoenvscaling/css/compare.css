@@ -1,5 +1,5 @@
 /* One failure, three proposers (js/compare.js). Flat: hairlines and whitespace; colour for
-   stages, author identity (a small dot and the markers), and ✓/✗. */
+   stages, author identity (a small dot, the plot, and the numbered circles), and ✓/✗. */
 .cmp-col.is-gpt { --author: var(--gpt); }
 .cmp-col.is-opus { --author: var(--opus); }
 .cmp-col.is-qwen { --author: var(--qwen); }
@@ -41,29 +41,13 @@
 .cmp-sub { font-size: 13px; font-weight: 400; color: var(--muted); }
 .cmp-stance { margin: 2px 0 12px; font-size: 14px; font-style: italic; color: var(--muted); }
 
-/* Strip with numbered markers */
-.cmp-track { position: relative; }
-.cmp-marks { position: relative; height: 28px; }
-.cmp-leaders { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
-.cmp-leader { fill: none; stroke: var(--muted); stroke-width: 1; }
-.cmp-leader.is-active { stroke: var(--ink); stroke-width: 1.5; }
-.cmp-marker {
-  position: absolute; top: 0; width: 18px; height: 18px; margin: 0; padding: 0; transform: translateX(-50%);
-  display: grid; place-items: center; border: 1px solid var(--author); border-radius: 50%;
-  background: var(--card); color: var(--author); font: 700 11px/1 var(--font); cursor: pointer;
-}
-.cmp-marker:hover, .cmp-marker.is-active { background: var(--author); color: #fff; }
-.cmp-strip { display: flex; height: 16px; min-width: 40px; }
-.cmp-cell { position: relative; flex: 1 1 0; min-width: 0; }
-.cmp-cell:first-child { border-radius: 2px 0 0 2px; }
-.cmp-cell:last-child { border-radius: 0 2px 2px 0; }
-.cmp-cell.is-active { z-index: 1; outline: 2px solid var(--ink); outline-offset: 1px; }
-.cmp-meta {
-  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 8px 0 14px;
-  font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
-}
-.cmp-share { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
-.cmp-share-item .stage { margin-right: 3px; }
+/* Step-line plot (after the paper's Figure 8) */
+.cmp-plotwrap { margin: 2px 0 14px; }
+.cmp-plot { display: block; width: 100%; overflow: visible; font-family: var(--font); }
+.cmp-plot-frame { fill: none; stroke: var(--line); stroke-width: 1; }
+.cmp-axis { fill: var(--muted); font-size: 12px; }
+.cmp-axis-n { font-size: 13px; font-weight: 700; }
+.cmp-pt { cursor: pointer; }
 
 /* The three moments */
 .cmp-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 10px; }
@@ -72,9 +56,10 @@
 .cmp-step-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 5px; }
 .cmp-num {
   flex: none; align-self: center; display: grid; place-items: center; width: 18px; height: 18px;
-  border: 1px solid var(--author); border-radius: 50%; color: var(--author); font: 700 11px/1 var(--font);
+  border: 2px solid var(--author-line, var(--author)); border-radius: 50%; color: var(--author-line, var(--author));
+  font: 700 11px/1 var(--font);
 }
-.cmp-step.is-active .cmp-num { background: var(--author); color: #fff; }
+.cmp-step.is-active .cmp-num { background: var(--author-line, var(--author)); color: #fff; }
 .cmp-step-title { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; }
 .cmp-turn { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cmp-lines { font: 12.5px/1.55 var(--mono); }

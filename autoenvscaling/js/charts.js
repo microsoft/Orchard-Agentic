@@ -498,12 +498,32 @@ function placeLabel(root, str, cands, obs, bounds, cls, size = 11.5, weight = 40
 /* (a) Valid-environment rate                                           */
 /* ------------------------------------------------------------------ */
 
+/** Figure 4 as plot_arms.py draws it: panel titles, model order, and two-line labels. */
+const ARMS_LEFT = ['opus', 'astra', 'sol', 'grok', 'gemini38', 'dsv4'];
+const ARMS_RIGHT = ['sol', 'terra', 'luna'];
+const ARMS_TITLES = ['Across model families', 'Within the GPT-5.6 family, strongest to weakest'];
+const ARMS_SHORT = {
+  opus: ['Claude', 'Opus 5'], sol: ['GPT-5.6', 'sol'], terra: ['GPT-5.6', 'terra'], luna: ['GPT-5.6', 'luna'],
+  dsv4: ['DeepSeek', 'V4-Flash'], grok: ['Grok', '4.6'], gemini38: ['Gemini-3.8', 'Flash'], astra: ['GPT-6', 'astra'],
+};
+const RATE_TICKS = [0, 0.25, 0.5, 0.75, 1];
+const rateTick = (t) => String(t * 100);
+const RATE_TITLE = 'Valid-environment rate (%)';
+const shortName = (d) => ARMS_SHORT[d.key] || wrapLabel(d.label, 70, (t) => textWidth(t, 12));
+/** Integer percent, rounding ties to even like Python's f"{y:.0f}" in plot_arms.py (92.5 -> 92). */
+function pct0(x) {
+  const v = x * 100;
+  const f = Math.floor(v);
+  return String(v - f === 0.5 ? (f % 2 === 0 ? f : f + 1) : Math.round(v));
+}
+
 function renderValid(container, data) {
-  const models = data.models;
-  const top = largestGain(models);
+  const byKey = new Map(data.models.map((d) => [d.key, d]));
+  const left = ARMS_LEFT.map((k) => byKey.get(k)).filter(Boolean);
+  const right = ARMS_RIGHT.map((k) => byKey.get(k)).filter(Boolean);
   const st = { shown: new Set(METHODS.map((m) => m.key)), w: 0 };
 
-  // Legend entries double as show/hide toggles; at least one method stays on screen.
+  // One legend for both panels; its entries show or hide a method (at least one stays).
   const toggles = METHODS.map((m) => {
     const b = el('button', { type: 'button', class: 'ch-toggle', 'aria-pressed': 'true' },
       keyBar(m.color), el('span', { class: 'ch-toggle-label', text: m.label }));
@@ -518,7 +538,7 @@ function renderValid(container, data) {
   const ui = frame(container, {
     controls: el('div', { class: 'ch-legend', role: 'group', 'aria-label': 'Show or hide methods' }, toggles),
   });
-  const summary = validSummary(models);
+  const summary = validSummary(data.models);
   ui.summary.textContent = summary;
 
   function draw() {
@@ -526,13 +546,46 @@ function renderValid(container, data) {
     if (!W) return;
     hideTip(ui);
     const shown = METHODS.filter((m) => st.shown.has(m.key));
-    const horizontal = container.clientWidth < 560;
-    const out = (horizontal ? validRows : validColumns)(W, models, shown, summary, top);
-    ui.plot.replaceChildren(out.root);
-    for (const g of out.groups) {
+    const cw = container.clientWidth;
+    const side = cw >= 700; // side by side, left panel wider (width_ratios 1.55 : 1)
+    const rows = cw < 560; // phones: the bar panel turns into horizontal bars
+    const L = 48;
+    const gap = 26;
+    const plotH = side ? 260 : 220;
+    const xLabH = 40;
+    const pwL = side ? ((W - 2 * L - gap - 4) * 1.55) / 2.55 : W - L - 4;
+    const pwR = side ? (W - 2 * L - gap - 4) / 2.55 : W - L - 4;
+    const titles = [[ARMS_TITLES[0], pwL], [ARMS_TITLES[1], pwR]]
+      .map(([t, w]) => wrapLabel(t, w + L - 8, (x) => textWidth(x, 13, 700)));
+    const titleH = (n) => 6 + n * 16;
+    const tSide = titleH(Math.max(titles[0].length, titles[1].length));
+    const tL = side ? tSide : titleH(titles[0].length);
+    const tR = side ? tSide : titleH(titles[1].length);
+
+    // Left panel box (grouped bars, or horizontal rows on phones), then the right panel box.
+    const leftBox = rows
+      ? { x0: 2, x1: W - 26, y0: tL, y1: tL + validRowsHeight(left.length, shown.length) }
+      : { x0: L, x1: L + pwL, y0: tL, y1: tL + plotH };
+    const leftH = leftBox.y1 + xLabH;
+    const rx0 = side ? L + pwL + gap + L : L;
+    const ry0 = side ? tR : leftH + 16 + tR;
+    const rightBox = { x0: rx0, x1: rx0 + pwR, y0: ry0, y1: ry0 + plotH };
+    const H = Math.max(leftH, rightBox.y1 + xLabH);
+
+    const root = chartSvg(W, H, summary);
+    const panelTitle = (lines, b, top) => lines.forEach((ln, i) => root.append(
+      text((b.x0 + b.x1) / 2, top + 13 + i * 16, ln, 'ch-panel-title', 'middle')));
+    panelTitle(titles[0], rows ? { x0: 0, x1: W } : leftBox, leftBox.y0 - tL);
+    panelTitle(titles[1], rightBox, rightBox.y0 - tR);
+    const groups = [
+      ...(rows ? validRows : validBars)(root, leftBox, left, shown),
+      ...validLines(root, rightBox, right, shown),
+    ];
+    ui.plot.replaceChildren(root);
+    for (const g of groups) {
       hoverable(ui, g.node, () => {
         const t = validTip(g.model, shown);
-        showTip(ui, t.nodes, boxOf(ui, out.root, W, ...g.box), horizontal ? 'below' : 'side');
+        showTip(ui, t.nodes, boxOf(ui, root, W, ...g.box), g.mode);
         return t.said;
       });
     }
@@ -540,78 +593,88 @@ function renderValid(container, data) {
   watchWidth(ui.plot, (w) => { st.w = w; draw(); });
 }
 
-const RATE_TICKS = [0, 0.5, 1];
-const rateTick = (t) => String(t * 100);
-
-/** "25×" over the largest gain, when both Prompt and AutoEnvScaling are on screen. */
-const calloutFor = (d, top, shown) => (d === top && shown.some((s) => s.key === 'prompt')
-  && shown.some((s) => s.key === 'harness') ? fmtRatio(harnessRatio(d)) : null);
-
-/** Vertical grouped bars, one group per model, as plot_arms.py. */
-function validColumns(W, list, shown, summary, top) {
-  const m = { left: 48, right: 2, top: 8 };
-  const plotH = W < 760 ? 220 : 260;
-  const band = (W - m.left - m.right) / list.length;
-  const names = list.map((d) => wrapLabel(d.label, band - 6, (t) => textWidth(t, 12)));
-  const base = m.top + plotH;
-  const H = base + 12 + Math.max(...names.map((l) => l.length)) * 14 + 4;
-  const Y = (v) => base - (v / 1.06) * plotH;
-  const root = chartSvg(W, H, summary);
-  drawAxes(root, { x0: m.left, x1: W - m.right, y0: m.top, y1: base }, {
-    Y, yTicks: RATE_TICKS, yFmt: rateTick, yTitle: 'Valid-environment rate (%)',
-  });
-
-  const barW = Math.min(30, band * 0.26);
+/** Left panel: grouped bars with integer value labels (ylim 0-112 as in plot_arms.py). */
+function validBars(root, b, list, shown) {
+  const plotH = b.y1 - b.y0;
+  const Y = (v) => b.y1 - (v / 1.12) * plotH;
+  drawAxes(root, b, { Y, yTicks: RATE_TICKS, yFmt: rateTick, yTitle: RATE_TITLE, yTitleX: b.x0 - 36 });
+  const band = (b.x1 - b.x0) / list.length;
+  const barW = band * 0.26; // w = 0.26 in plot_arms.py
   const groupW = shown.length * barW;
-  const groups = list.map((d, i) => {
-    const cx = m.left + band * (i + 0.5);
+  return list.map((d, i) => {
+    const cx = b.x0 + band * (i + 0.5);
     const g = svg('g', { class: 'ch-group', tabindex: 0 });
-    g.append(svg('rect', { class: 'ch-band', x: r2(cx - band / 2 + 1), y: 0, width: r2(band - 2), height: H, rx: 3 }));
+    g.append(svg('rect', { class: 'ch-band', x: r2(cx - band / 2 + 1), y: r2(b.y0 - 4), width: r2(band - 2), height: r2(b.y1 - b.y0 + 38), rx: 3 }));
+    g.append(line(cx, b.y1, cx, b.y1 + 3, 'ch-spine'));
     shown.forEach((meth, j) => {
       const a = d.arms[meth.key];
       const x = cx - groupW / 2 + j * barW;
-      g.append(rect(x, Y(a.rate), barW, base - Y(a.rate), `ch-bar is-${meth.key}`, meth.color));
-      const call = meth.key === 'harness' && calloutFor(d, top, shown);
-      if (call) g.append(text(x + barW / 2, Y(a.rate) - 6, call, 'ch-callout', 'middle'));
+      g.append(rect(x, Y(a.rate), barW, b.y1 - Y(a.rate), `ch-bar is-${meth.key}`, meth.color));
+      g.append(text(x + barW / 2, Y(a.rate) - 4, pct0(a.rate), 'ch-value is-small', 'middle'));
     });
-    names[i].forEach((ln, li) => g.append(text(cx, base + 17 + li * 14, ln, 'ch-xlabel', 'middle')));
+    shortName(d).forEach((ln, li) => g.append(text(cx, b.y1 + 16 + li * 14, ln, 'ch-xlabel', 'middle')));
     root.append(g);
-    return { node: g, model: d, box: [cx - groupW / 2, m.top, cx + groupW / 2, base] };
+    return { node: g, model: d, box: [cx - groupW / 2, b.y0, cx + groupW / 2, b.y1], mode: 'side' };
   });
-  return { root, groups };
 }
 
-/** Horizontal bars for narrow screens: one row per model, its name on its own line. */
-function validRows(W, list, shown, summary, top) {
-  const m = { left: 2, right: 30, top: 2, bottom: 40 };
-  const barH = 9;
-  const head = 20;
-  const rowGap = 12;
-  const rowH = head + shown.length * barH + rowGap;
-  const bodyH = list.length * rowH;
-  const H = m.top + bodyH + m.bottom;
-  const X = (v) => m.left + v * (W - m.left - m.right);
-  const root = chartSvg(W, H, summary);
-  drawAxes(root, { x0: X(0), x1: X(1), y0: m.top, y1: m.top + bodyH - rowGap + 4 }, {
-    X, xTicks: RATE_TICKS, xFmt: rateTick, grid: 'x', xTitle: 'Valid-environment rate (%)',
-  });
+const VR = { barH: 9, head: 20, gap: 12 };
+const validRowsHeight = (n, k) => n * (VR.head + k * VR.barH + VR.gap) - VR.gap + 4;
 
-  const groups = list.map((d, i) => {
-    const y0 = m.top + i * rowH;
+/** Left panel on phones: one row per model (full name above its bars), values at the bar ends. */
+function validRows(root, b, list, shown) {
+  const rowH = VR.head + shown.length * VR.barH + VR.gap;
+  const X = (v) => b.x0 + v * (b.x1 - b.x0);
+  drawAxes(root, b, { X, xTicks: RATE_TICKS, xFmt: rateTick, grid: 'x', xTitle: RATE_TITLE });
+  return list.map((d, i) => {
+    const y0 = b.y0 + i * rowH;
     const g = svg('g', { class: 'ch-group', tabindex: 0 });
-    g.append(svg('rect', { class: 'ch-band', x: 0, y: y0 - 1, width: W, height: rowH - rowGap + 5, rx: 3 }));
-    g.append(text(m.left + 5, y0 + 13, d.label, 'ch-rowlabel ch-halo'));
+    g.append(svg('rect', { class: 'ch-band', x: 0, y: r2(y0 - 1), width: r2(b.x1 + 24), height: rowH - VR.gap + 5, rx: 3 }));
+    g.append(text(b.x0 + 5, y0 + 13, d.label, 'ch-rowlabel ch-halo'));
     shown.forEach((meth, j) => {
       const a = d.arms[meth.key];
-      const y = y0 + head + j * barH;
-      g.append(rect(X(0), y, X(a.rate) - X(0), barH, `ch-bar is-${meth.key}`, meth.color));
-      const call = meth.key === 'harness' && calloutFor(d, top, shown);
-      if (call) g.append(text(X(a.rate) + 5, y + barH - 0.5, call, 'ch-callout'));
+      const y = y0 + VR.head + j * VR.barH;
+      g.append(rect(X(0), y, X(a.rate) - X(0), VR.barH, `ch-bar is-${meth.key}`, meth.color));
+      g.append(text(X(a.rate) + 4, y + VR.barH - 0.5, pct0(a.rate), 'ch-value is-small'));
     });
     root.append(g);
-    return { node: g, model: d, box: [0, y0, W, y0 + rowH - rowGap + 4] };
+    return { node: g, model: d, box: [0, y0, b.x1, y0 + rowH - VR.gap + 4], mode: 'below' };
   });
-  return { root, groups };
+}
+
+/** Right panel: one line per method across GPT-5.6 sol, terra, luna, labels at the points
+ *  (above for AutoEnvScaling, below for the others, as in plot_arms.py). */
+function validLines(root, b, list, shown) {
+  const plotH = b.y1 - b.y0;
+  const Y = (v) => b.y1 - (v / 1.12) * plotH;
+  const X = (i) => b.x0 + ((i + 0.35) / (list.length - 0.3)) * (b.x1 - b.x0); // xlim (-.35, n - .65)
+  drawAxes(root, b, { Y, yTicks: RATE_TICKS, yFmt: rateTick, yTitle: RATE_TITLE, yTitleX: b.x0 - 36 });
+  const step = list.length > 1 ? X(1) - X(0) : b.x1 - b.x0;
+  // Hover columns first, so the marks drawn after them sit on top (and let the pointer through).
+  const groups = list.map((d, i) => {
+    const g = svg('g', { class: 'ch-group', tabindex: 0 });
+    g.append(svg('rect', { class: 'ch-band', x: r2(X(i) - step / 2 + 1), y: r2(b.y0 - 4), width: r2(step - 2), height: r2(plotH + 42), rx: 3 }));
+    g.append(line(X(i), b.y1, X(i), b.y1 + 3, 'ch-spine'));
+    shortName(d).forEach((ln, li) => g.append(text(X(i), b.y1 + 16 + li * 14, ln, 'ch-xlabel', 'middle')));
+    root.append(g);
+    return { node: g, model: d, box: [X(i) - 8, b.y0, X(i) + 8, b.y1], mode: 'side' };
+  });
+  const marks = svg('g', { class: 'ch-nohit' });
+  const labels = svg('g', { class: 'ch-nohit' });
+  for (const m of shown) {
+    const ours = m.key === 'harness';
+    const pts = list.map((d, i) => [X(i), Y(d.arms[m.key].rate)]);
+    marks.append(svg('path', {
+      class: 'ch-line', d: `M${pts.map(([x, y]) => `${r2(x)},${r2(y)}`).join('L')}`,
+      style: `stroke:${m.color};stroke-width:${ours ? 2.6 : 1.7}px`,
+    }));
+    pts.forEach(([x, y], i) => {
+      marks.append(markerEl('o', x, y, 7, m.color, 'ch-mark is-edge'));
+      labels.append(text(x, ours ? y - 9 : y + 18, pct0(list[i].arms[m.key].rate), 'ch-value ch-halo', 'middle'));
+    });
+  }
+  root.append(marks, labels);
+  return groups;
 }
 
 function validTip(d, shown) {

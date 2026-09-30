@@ -123,3 +123,6 @@
 @media (prefers-reduced-motion: reduce) {
   .ch-band { transition: none; }
 }
+
+.ch-nohit { pointer-events: none; }
+.ch-value.is-small { font-size: 11px; }
