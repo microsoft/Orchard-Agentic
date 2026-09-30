@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orchard: An Open-Source Agentic Modeling Framework</title>
+  <meta name="description" content="Orchard is an open-source framework for scalable agentic modeling, built on Orchard Env — a thin, Kubernetes-native, harness-agnostic environment service for sandbox lifecycle management across coding, GUI, and personal-assistant agents." />
+
+  <!-- Social / Open Graph -->
+  <meta property="og:title" content="Orchard: An Open-Source Agentic Modeling Framework" />
+  <meta property="og:description" content="A thin, open, harness-agnostic environment layer enabling reusable agentic data, training recipes, and evaluations across domains and harnesses." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/img/orchard-overview.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+
+  <!-- ============================ HEADER ============================ -->
+  <header class="hero">
+    <div class="container">
+      <a class="hero-badge" href="index.html">← Orchard-Agentic hub</a>
+      <h1 class="hero-title">🌳 Orchard</h1>
+      <h3 class="hero-subtitle">An Open-Source Agentic Modeling Framework</h3>
+
+      <ul class="authors">
+        <li><a href="https://scholar.google.com/citations?user=u1CNjgwAAAAJ&hl=en" target="_blank" rel="noopener">Baolin Peng*✉️</a></li>
+        <li><a href="https://scholar.google.com/citations?user=qwo2A24AAAAJ&hl=en" target="_blank" rel="noopener">Wenlin Yao*</a></li>
+        <li><a href="https://scholar.google.com/citations?user=BLZieokAAAAJ&hl=en" target="_blank" rel="noopener">Qianhui Wu*</a></li>
+        <li><a href="https://scholar.google.com/citations?user=d9s3sbQAAAAJ&hl=en" target="_blank" rel="noopener">Hao Cheng*</a></li>
+      </ul>
+      <ul class="authors">
+        <li><a href="https://scholar.google.com/citations?user=QblBy88AAAAJ&hl=en" target="_blank" rel="noopener">Xiao Yu†</a></li>
+        <li><a href="https://scholar.google.com/citations?user=QHSUy3MAAAAJ&hl=en" target="_blank" rel="noopener">Rui Yang†</a></li>
+        <li><a href="https://scholar.google.com/citations?user=LYbs7Q8AAAAJ&hl=en" target="_blank" rel="noopener">Tao Ge</a></li>
+        <li><a href="https://scholar.google.com/citations?user=DJon7w4AAAAJ&hl=en" target="_blank" rel="noopener">Alessandro Sordoni</a></li>
+        <li><a href="https://scholar.google.com/citations?user=dS3LulEAAAAJ&hl=en" target="_blank" rel="noopener">Xingdi Yuan</a></li>
+        <li><a href="https://scholar.google.com/citations?user=S6OFEFEAAAAJ&hl=en" target="_blank" rel="noopener">Yelong Shen</a></li>
+      </ul>
+      <ul class="authors">
+        <li><a href="https://scholar.google.com/citations?user=TS1RoxAAAAAJ&hl=en" target="_blank" rel="noopener">Pengcheng He</a></li>
+        <li><a href="https://scholar.google.com/citations?user=LurWtuYAAAAJ&hl=en" target="_blank" rel="noopener">Tong Zhang</a></li>
+        <li><a href="https://scholar.google.com/citations?user=jee2Dy0AAAAJ&hl=en" target="_blank" rel="noopener">Zhou Yu</a></li>
+        <li><a href="https://scholar.google.com/citations?user=CQ1cqKkAAAAJ&hl=en" target="_blank" rel="noopener">Jianfeng Gao✉️</a></li>
+      </ul>
+
+      <p class="affiliation">* First Authors &nbsp;·&nbsp; † Second Authors</p>
+
+      <nav class="hero-links">
+        <a class="btn" href="https://arxiv.org/abs/2605.15040" target="_blank" rel="noopener">
+          <span class="btn-icon">📄</span> Paper
+        </a>
+        <a class="btn" href="https://github.com/microsoft/Orchard-Agentic" target="_blank" rel="noopener" data-verify>
+          <span class="btn-icon">⌨</span> Code
+        </a>
+        <a class="btn" href="https://huggingface.co/datasets/microsoft/Orchard" target="_blank" rel="noopener" data-verify>
+          <span class="btn-icon">🤗</span> Data
+        </a>
+        <a class="btn" href="#bibtex">
+          <span class="btn-icon">❝</span> BibTeX
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ============================ PERFORMANCE ============================ -->
+  <section class="section section-tight">
+    <div class="container">
+      <figure class="overview-figure perf-figure">
+        <img src="assets/img/orchard-performance.png"
+             alt="Performance comparison scatter plots. Left: Orchard-SWE (35B-A3B) reaches 73.0% on SWE-bench Verified with value-model reranking (69.7% with RPR-based RL), approaching frontier mixture-of-experts systems 10–30× larger. Right: Orchard-GUI (4B) reaches 68.4% average success across WebVoyager, Online-Mind2Web, and DeepShop." />
+        <figcaption>
+          <strong>Performance comparison.</strong> <em>Left:</em> Orchard-SWE (35B-A3B) reaches 73.0% on
+          SWE-bench Verified with value-model reranking (69.7% with RPR-based RL), approaching frontier
+          MoE systems 10–30× larger. <em>Right:</em> Orchard-GUI (4B) achieves 68.4% average success
+          across WebVoyager, Online-Mind2Web, and DeepShop, making it the strongest open-source GUI
+          agent while staying on par with proprietary systems from OpenAI and Google.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============================ ABSTRACT ============================ -->
+  <section class="section" id="abstract">
+    <div class="container narrow">
+      <h2 class="section-title">Abstract</h2>
+      <p class="abstract">
+        Agentic modeling aims to transform large language models (LLMs) into autonomous agents that
+        can solve complex tasks through planning, reasoning, tool use, and multi-turn interaction with
+        external environments. We present <strong>Orchard</strong>, an open-source framework for
+        scalable agentic modeling. At its core is <strong>Orchard Env</strong>, a thin,
+        Kubernetes-native environment service that provides reusable primitives for sandbox lifecycle
+        management, designed to operate across task domains, agent harnesses, and different training
+        stages. On top of Orchard Env, we build three agentic modeling recipes.
+        <strong>Orchard-SWE</strong> targets software-engineering agents: we introduce
+        credit-assignment SFT to learn from productive segments of unresolved trajectories, and for RL
+        go beyond sparse outcome rewards with a progression of signals — Balanced Adaptive Rollout
+        (BAR) for sample-efficient sparse-reward optimization, plus two denser rewards, on-policy
+        distillation (OPD) and rubric-based process reward (RPR). We further introduce historical
+        experience distillation, which compresses rollouts from past experiments into a small value
+        model that reranks candidates at inference time. On the Qwen3.5-35B-A3B backbone it reaches
+        69.7% with RPR-based RL and 73.0% with best-of-N value-model reranking, setting a new state of
+        the art among open-source methods while approaching frontier systems more than 10× larger.
+        <strong>Orchard-GUI</strong> trains a 4B vision-language computer-use agent using only 0.4K
+        distilled trajectories and 2.2K open-ended tasks, achieving 74.1%, 67.0%, and 64.0% success
+        rates on WebVoyager, Online-Mind2Web, and DeepShop, respectively (68.4% average) — the
+        strongest open-source model while remaining competitive with proprietary systems from OpenAI
+        and Google Gemini. <strong>Orchard-Claw</strong> targets personal assistant agents for
+        productivity workflows such as email, calendar, and daily tool use: trained with only 0.2K
+        synthetic tasks, it achieves 59.6% pass@3 on Claw-Eval and 73.9% when paired with a stronger
+        ZeroClaw harness. Collectively, these results show that a thin, open, harness-agnostic
+        environment layer enables the reuse of agentic data, training recipes, and evaluation
+        protocols across domains and harnesses.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ OVERVIEW DIAGRAM ============================ -->
+  <section class="section section-alt" id="overview">
+    <div class="container">
+      <h2 class="section-title">How Orchard fits together</h2>
+      <p class="section-lead">
+        One thin environment layer powers every stage of the agent lifecycle — data generation,
+        supervised fine-tuning, reinforcement learning, and evaluation — across three task domains.
+      </p>
+
+      <div class="arch">
+        <div class="arch-row arch-recipes">
+          <div class="arch-card recipe swe">
+            <div class="arch-emoji">⌨️</div>
+            <h3>Orchard-SWE</h3>
+            <p>Coding agents on real repositories</p>
+            <span class="arch-tag">SWE-bench Verified</span></br>
+            <span class="arch-tag">SWE-bench Multilingual</span>
+          </div>
+          <div class="arch-card recipe gui">
+            <div class="arch-emoji">🖥️</div>
+            <h3>Orchard-GUI</h3>
+            <p>VLM-based computer-use agents</p>
+            <span class="arch-tag">WebVoyager</span>
+            <span class="arch-tag">DeepShop</span></br>
+            <span class="arch-tag">Online-Mind2Web</span>
+          </div>
+          <div class="arch-card recipe claw">
+            <div class="arch-emoji">🤖</div>
+            <h3>Orchard-Claw</h3>
+            <p>Personal assistant agents</p>
+            <span class="arch-tag">Claw-Eval</span>
+          </div>
+        </div>
+
+        <div class="arch-connector">
+          <span>harness-agnostic API · reusable across recipes</span>
+        </div>
+
+        <div class="arch-row">
+          <div class="arch-card env">
+            <div class="env-head">
+              <div class="arch-emoji">🌳</div>
+              <h3>Orchard Env</h3>
+              <p class="env-tagline">A thin, Kubernetes-native environment service — reusable primitives for sandbox lifecycle management</p>
+            </div>
+            <div class="env-prims">
+              <span>create / destroy</span>
+              <span>exec (async)</span>
+              <span>apply&nbsp;patch</span>
+              <span>file I/O</span>
+              <span>screenshot &amp; action</span>
+              <span>network policy</span>
+              <!--span>REST API</span-->
+              <span>TTL cleanup</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-connector down">
+          <span>schedules isolated, reproducible sandboxes</span>
+        </div>
+
+        <div class="arch-row arch-backends">
+          <div class="arch-card backend">
+            <strong>Kubernetes / AKS</strong>
+            <p>Per-sandbox namespaces, NetworkPolicy isolation, autoscaling pools</p>
+          </div>
+          <div class="arch-card backend">
+            <strong>Browser sandbox</strong>
+            <p>Containerized browser driven via Playwright — screenshots &amp; full web interaction</p>
+          </div>
+          <div class="arch-card backend">
+            <strong>Local / Docker</strong>
+            <p>Lightweight containers for fast iteration and CI</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ THE THREE RECIPES ============================ -->
+  <section class="section" id="recipes">
+    <div class="container">
+      <h2 class="section-title">Three recipes, one environment</h2>
+
+      <div class="recipe-grid">
+        <!-- SWE -->
+        <article class="recipe-detail">
+          <header>
+            <span class="recipe-chip swe">Orchard-SWE</span>
+            <h3>Coding agents</h3>
+          </header>
+          <p>
+            Orchard-SWE curates <strong>107K trajectories</strong> distilled from MiniMax-M2.5 and
+            Qwen3.5-397B, then adds <em>credit-assignment SFT</em> to salvage productive segments of
+            unresolved trajectories and a progression of denser RL signals — <em>Balanced Adaptive
+            Rollout (BAR)</em>, <em>on-policy distillation (OPD)</em>, and <em>rubric-based process
+            reward (RPR)</em> — plus best-of-N reranking with a small value model.
+          </p>
+          <ul class="kv">
+            <li><span>SFT + RL <em>(RPR)</em></span><strong>69.7%</strong></li>
+            <li><span>+ value model</span><strong>73.0%</strong></li>
+            <li><span>Backbone</span><strong>Qwen3.5-35B-A3B</strong></li>
+          </ul>
+          <p class="note">New state of the art on SWE-bench Verified among open-source models of comparable size.</p>
+        </article>
+
+        <!-- GUI -->
+        <article class="recipe-detail">
+          <header>
+            <span class="recipe-chip gui">Orchard-GUI</span>
+            <h3>Computer-use agents</h3>
+          </header>
+          <p>
+            A compact <strong>4B vision-language</strong> agent trained on only <strong>0.4K distilled
+            trajectories</strong> plus <strong>2.2K open-ended tasks</strong>, driving a live browser
+            through screenshots and actions — the strongest open-source computer-use model while staying
+            competitive with proprietary systems.
+          </p>
+          <ul class="kv">
+            <li><span>WebVoyager</span><strong>74.1%</strong></li>
+            <li><span>Online-Mind2Web</span><strong>67.0%</strong></li>
+            <li><span>DeepShop</span><strong>64.0%</strong></li>
+          </ul>
+          <p class="note">Outperforms prior open-source agents and even its 235B teacher model, on a tiny data footprint.</p>
+        </article>
+
+        <!-- Claw -->
+        <article class="recipe-detail">
+          <header>
+            <span class="recipe-chip claw">Orchard-Claw</span>
+            <h3>Personal assistant agents</h3>
+          </header>
+          <p>
+            Trained with just <strong>0.2K synthetic tasks</strong>, Orchard-Claw shows that the same
+            environment layer transfers to assistant-style agents — and improves further when paired
+            with a stronger <em>ZeroClaw</em> harness at inference time.
+          </p>
+          <ul class="kv">
+            <li><span>Claw-Eval (pass@3)</span><strong>59.6%</strong></li>
+            <li><span>+ ZeroClaw harness</span><strong>73.9%</strong></li>
+            <li><span>Training tasks</span><strong>0.2K</strong></li>
+          </ul>
+          <p class="note">Harness-agnostic: swap the harness without changing the Env.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ TRAINING METHODS ============================ -->
+  <section class="section section-alt" id="methods">
+    <div class="container narrow">
+      <h2 class="section-title">Key training ingredients</h2>
+      <div class="method-list">
+        <div class="method">
+          <div class="method-num">01</div>
+          <div>
+            <h3>Trajectory distillation</h3>
+            <p>
+              Large teacher models (MiniMax-M2.5, Qwen3.5-397B) generate agent trajectories that are
+              distilled into smaller, deployable student models — 107K trajectories for SWE alone, but
+              as few as hundreds for GUI and Claw.
+            </p>
+          </div>
+        </div>
+        <div class="method">
+          <div class="method-num">02</div>
+          <div>
+            <h3>Credit-assignment SFT</h3>
+            <p>
+              Instead of discarding failed rollouts, Orchard uses retrospective value estimation to
+              extract the <em>productive segments</em> of unresolved trajectories — converting partial
+              progress that standard outcome-filtered SFT throws away into supervision.
+            </p>
+          </div>
+        </div>
+        <div class="method">
+          <div class="method-num">03</div>
+          <div>
+            <h3>Balanced Adaptive Rollout (BAR)</h3>
+            <p>
+              A sample-efficient RL rollout strategy for sparse rewards: it adaptively assembles
+              reward-balanced trajectory groups so exploration is spent where the outcome signal is
+              most informative across tasks of varying difficulty.
+            </p>
+          </div>
+        </div>
+        <div class="method">
+          <div class="method-num">04</div>
+          <div>
+            <h3>Denser RL rewards: OPD &amp; RPR</h3>
+            <p>
+              Two dense signals go beyond sparse outcome rewards — <em>on-policy distillation (OPD)</em>
+              supplies a token-level teacher signal at lower rollout cost, and <em>rubric-based process
+              reward (RPR)</em> scores verification quality along the whole trajectory, reaching 69.7%
+              on SWE-bench Verified.
+            </p>
+          </div>
+        </div>
+        <div class="method">
+          <div class="method-num">05</div>
+          <div>
+            <h3>Historical experience distillation</h3>
+            <p>
+              Rollouts accumulated across past RL runs are compressed into a small value model that
+              reranks candidates at inference time (best-of-N), lifting Orchard-SWE to 73.0% on
+              SWE-bench Verified.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ ENV DEEP DIVE ============================ -->
+  <section class="section" id="env">
+    <div class="container">
+      <h2 class="section-title">Inside Orchard Env</h2>
+      <p class="section-lead">
+        The environment service exposes a small, uniform API for managing isolated sandboxes. The same
+        client code drives a Kubernetes-backed coding sandbox or a Playwright-driven browser for GUI
+        agents — so data generation, training, and evaluation all share one interface.
+      </p>
+
+      <div class="env-grid">
+        <div class="env-feature">
+          <h4>Sandbox lifecycle</h4>
+          <p>Create, query, and tear down isolated sandboxes with per-sandbox namespaces, custom CPU/memory, and automatic TTL cleanup.</p>
+        </div>
+        <div class="env-feature">
+          <h4>Async execution</h4>
+          <p>Submit commands and poll for results; per-sandbox serialization with global concurrency control keeps multi-turn rollouts consistent.</p>
+        </div>
+        <div class="env-feature">
+          <h4>Patches &amp; files</h4>
+          <p>Apply git patches and upload/download/list files — the primitives agent harnesses need to read, edit, and test code.</p>
+        </div>
+        <div class="env-feature">
+          <h4>Browser control</h4>
+          <p>For GUI agents, a containerized browser driven via Playwright adds screenshots and full web interaction — clicks, typing, scrolling, and navigation.</p>
+        </div>
+        <div class="env-feature">
+          <h4>Isolation by default</h4>
+          <p>Calico NetworkPolicy blocks egress by default; each sandbox runs in its own namespace with resource requests equal to limits.</p>
+        </div>
+        <div class="env-feature">
+          <h4>Scales out, cheaply</h4>
+          <p>Runtime agent injection and direct Pod-IP routing hit 0.28&nbsp;s average exec latency and sustain a 1,000-sandbox stress test at 100% success — at ~2× lower cost than E2B and Daytona (10× with spot).</p>
+        </div>
+      </div>
+
+      <div class="code-block">
+        <div class="code-head">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-title">orchard_env — quick start</span>
+        </div>
+<pre><code><span class="c"># One client, the same API for every recipe</span>
+<span class="k">from</span> aks_modal <span class="k">import</span> SandboxClient
+
+<span class="k">with</span> SandboxClient() <span class="k">as</span> client:
+    <span class="k">with</span> client.create_sandbox(<span class="s">"python:3.11-slim"</span>) <span class="k">as</span> sandbox:
+        <span class="c"># run a command and read the result</span>
+        result = sandbox.exec(<span class="s">"pytest -q"</span>, timeout=<span class="n">600</span>)
+        <span class="nb">print</span>(result.stdout, result.exit_code)
+
+        <span class="c"># apply an agent-proposed patch, then re-test</span>
+        sandbox.apply_patch(patch_text)
+        sandbox.exec(<span class="s">"python -m pytest tests/"</span>)
+</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ RESULTS TABLE ============================ -->
+  <section class="section section-alt" id="results">
+    <div class="container narrow">
+      <h2 class="section-title">Results at a glance</h2>
+      <div class="table-wrap">
+        <table class="results">
+          <thead>
+            <tr><th>Recipe</th><th>Model</th><th>Benchmark</th><th>Score</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td rowspan="5"><span class="recipe-chip swe">SWE</span></td>
+              <td rowspan="2">Qwen3-30B-A3B-Thinking</td>
+              <td>SWE-bench Verified <em>(SFT)</em></td><td class="num">64.3%</td>
+            </tr>
+            <tr><td>SWE-bench Verified <em>(SFT+RL)</em></td><td class="num">67.5%</td></tr>
+            <tr>
+              <td rowspan="3">Qwen3.5-35B-A3B</td>
+              <td>SWE-bench Verified <em>(RPR-RL)</em></td><td class="num">69.7%</td>
+            </tr>
+            <tr><td>SWE-bench Verified <em>(+ value model)</em></td><td class="num">73.0%</td></tr>
+            <tr><td>SWE-bench Multilingual <em>(RPR-RL)</em></td><td class="num">62.3%</td></tr>
+            <tr>
+              <td rowspan="3"><span class="recipe-chip gui">GUI</span></td>
+              <td rowspan="3">Qwen3-VL-4B-Thinking</td>
+              <td>WebVoyager</td><td class="num">74.1%</td>
+            </tr>
+            <tr><td>Online-Mind2Web</td><td class="num">67.0%</td></tr>
+            <tr><td>DeepShop</td><td class="num">64.0%</td></tr>
+            <tr>
+              <td rowspan="2"><span class="recipe-chip claw">Claw</span></td>
+              <td rowspan="2">Qwen3-30B-A3B-Thinking</td>
+              <td>Claw-Eval <em>(pass@3)</em></td><td class="num">59.6%</td>
+            </tr>
+            <tr><td>Claw-Eval + ZeroClaw <em>(pass@3)</em></td><td class="num">73.9%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note centered">All models are open-source and state-of-the-art among comparable-size open models on their respective benchmarks.</p>
+    </div>
+  </section>
+
+  <!-- ============================ BIBTEX ============================ -->
+  <section class="section" id="bibtex">
+    <div class="container narrow">
+      <h2 class="section-title">BibTeX</h2>
+      <div class="code-block">
+        <div class="code-head">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-title">cite</span>
+          <button class="copy-btn" data-copy="bibtex">Copy</button>
+        </div>
+<pre id="bibtex-text"><code>@article{peng2026orchard,
+  title   = {Orchard: An Open-Source Agentic Modeling Framework},
+  author  = {Peng, Baolin and Yao, Wenlin and Wu, Qianhui and Cheng, Hao and
+             Yu, Xiao and Yang, Rui and Ge, Tao and Sordoni, Alessandro and
+             Yuan, Xingdi and Shen, Yelong and He, Pengcheng and Zhang, Tong and
+             Yu, Zhou and Gao, Jianfeng},
+  journal = {arXiv preprint arXiv:2605.15040},
+  year    = {2026}
+}</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="footer">
+    <div class="container">
+      <p>
+        <a href="https://arxiv.org/abs/2605.15040" target="_blank" rel="noopener">arXiv</a> ·
+        <a href="https://github.com/microsoft/Orchard-Agentic" target="_blank" rel="noopener" data-verify>Code</a> ·
+        <a href="https://huggingface.co/datasets/microsoft/Orchard" target="_blank" rel="noopener" data-verify>Data</a>
+      </p>
+      <p class="footer-fine">
+        Orchard is a foundational project in the Orchard-Agentic collection.
+      </p>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
