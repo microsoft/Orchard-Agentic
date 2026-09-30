@@ -8,6 +8,10 @@ import time
 import redis.asyncio as redis
 
 from orchard_env.orchestrator.job_store import Job, JobStatus
+from orchard_env.orchestrator.redis_connection import (
+    create_redis_client,
+    redis_log_target,
+)
 from orchard_env.orchestrator.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -38,11 +42,12 @@ class RedisJobStore:
     async def connect(self) -> None:
         """Connect to Redis."""
         if self._client is None:
-            self._client = redis.from_url(
-                self.redis_url, encoding="utf-8", decode_responses=True
-            )
+            self._client = create_redis_client(self.redis_url)
             await self._client.ping()
-            logger.info(f"RedisJobStore connected to Redis at {self.redis_url}")
+            logger.info(
+                f"RedisJobStore connected to Redis at "
+                f"{redis_log_target(self.redis_url)}"
+            )
 
     async def close(self) -> None:
         """Close Redis connection."""

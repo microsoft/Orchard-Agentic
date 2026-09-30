@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import sys
 import time
 import uuid
@@ -12,6 +13,27 @@ from orchard_env.orchestrator.settings import settings
 
 # Context variable for request ID
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+_SERVICE_CAPABILITY_PATH = re.compile(r"/s/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+
+
+class CapabilityPathRedactionFilter(logging.Filter):
+    """Remove service bearer tokens from every log record and argument."""
+
+    @staticmethod
+    def _redact(value):
+        if isinstance(value, str):
+            return _SERVICE_CAPABILITY_PATH.sub("/s/<redacted>", value)
+        return value
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = self._redact(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._redact(value) for value in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: self._redact(value) for key, value in record.args.items()
+            }
+        return True
 
 
 class JSONFormatter(logging.Formatter):
@@ -56,6 +78,7 @@ def setup_logging() -> None:
 
     # Create console handler
     handler = logging.StreamHandler(sys.stdout)
+    handler.addFilter(CapabilityPathRedactionFilter())
 
     if settings.log_format == "json":
         handler.setFormatter(JSONFormatter())

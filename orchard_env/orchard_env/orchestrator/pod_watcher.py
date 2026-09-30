@@ -279,6 +279,16 @@ class PodWatcher:
             event.set()  # Unblock any waiters
         self._failed_sandboxes.discard(sandbox_id)
 
+    def prepare_sandbox(self, sandbox_id: str):
+        """Clear stale state before creating a new pod with this sandbox ID."""
+        pod_name = f"sandbox-{sandbox_id}"
+        self._cache.pop(pod_name, None)
+        event = self._ready_events.pop(sandbox_id, None)
+        if event:
+            event.set()
+        self._failed_sandboxes.discard(sandbox_id)
+        self._deleted_sandboxes.discard(sandbox_id)
+
     async def _watch_loop(self):
         """Main watch loop with automatic reconnection."""
         while self._running:

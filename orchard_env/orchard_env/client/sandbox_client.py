@@ -32,6 +32,7 @@ import time
 import uuid
 from http.client import RemoteDisconnected
 from typing import TYPE_CHECKING, Union
+from urllib.parse import urlsplit
 
 import aiohttp
 import requests
@@ -39,6 +40,39 @@ from requests.exceptions import ChunkedEncodingError, ConnectionError, Timeout
 
 if TYPE_CHECKING:
     from orchard_env.client.process import AsyncContainerProcess, ContainerProcess
+
+
+def _origin(url: str) -> tuple[str, str, int]:
+    parsed = urlsplit(url)
+    return (
+        parsed.scheme.lower(),
+        (parsed.hostname or "").lower(),
+        parsed.port or (443 if parsed.scheme == "https" else 80),
+    )
+
+
+class _ScopedApiKeySession(requests.Session):
+    """Attach the management key only to the configured orchestrator origin."""
+
+    def __init__(self, base_url: str, api_key: str | None):
+        super().__init__()
+        self._management_origin = _origin(base_url)
+        self._api_key = api_key
+
+    def prepare_request(self, request):
+        prepared = super().prepare_request(request)
+        if self._api_key and _origin(prepared.url) == self._management_origin:
+            prepared.headers["X-API-Key"] = self._api_key
+        else:
+            prepared.headers.pop("X-API-Key", None)
+        return prepared
+
+    def rebuild_auth(self, prepared_request, response):
+        super().rebuild_auth(prepared_request, response)
+        if self._api_key and _origin(prepared_request.url) == self._management_origin:
+            prepared_request.headers["X-API-Key"] = self._api_key
+        else:
+            prepared_request.headers.pop("X-API-Key", None)
 
 
 # Global registry for tracking sandboxes to cleanup on exit
@@ -129,6 +163,34 @@ class JobResult:
         return f"JobResult(status={self.status}, exit_code={self.exit_code})"
 
 
+class ServiceEndpoint:
+    """A URL for a service running inside a sandbox.
+
+    Returned by :meth:`SandboxInstance.expose_service`. The URL carries its own
+    credential, so it is a bearer token: anyone holding it can reach that port
+    on that sandbox until ``expires_at``, or until the port is revoked.
+    """
+
+    def __init__(self, data: dict):
+        self.sandbox_id: str = data.get("sandbox_id", "")
+        self.port: int = data.get("port", 0)
+        self.url: str = data.get("url", "")
+        self.expires_at: float = data.get("expires_at", 0.0)
+
+    @property
+    def ws_url(self) -> str:
+        """The same endpoint as a ``ws://``/``wss://`` URL."""
+        if self.url.startswith("https://"):
+            return "wss://" + self.url[len("https://") :]
+        if self.url.startswith("http://"):
+            return "ws://" + self.url[len("http://") :]
+        return self.url
+
+    def __repr__(self) -> str:
+        # The URL is a credential, so it is deliberately not in the repr.
+        return f"ServiceEndpoint(sandbox_id={self.sandbox_id}, port={self.port})"
+
+
 class SandboxInstance:
     """A sandbox instance that supports command execution."""
 
@@ -176,6 +238,79 @@ class SandboxInstance:
         if self._heartbeat_thread:
             self._heartbeat_thread.join(timeout=5)
             self._heartbeat_thread = None
+
+    def heartbeat(self) -> None:
+        """Send a single heartbeat now.
+
+        :meth:`start_heartbeat` owns a background thread, which is the right
+        shape for a long-lived session. Callers driving their own loop — an RL
+        rollout that already ticks per step, or an adapter implementing another
+        framework's heartbeat hook — want one call instead.
+        """
+        self._client._request("POST", f"/sandboxes/{self.sandbox_id}/heartbeat")
+
+    def expose_service(
+        self,
+        port: int,
+        ttl_seconds: int | None = None,
+        wait_ready: bool = False,
+        health_path: str = "/health",
+        ready_timeout: int = 60,
+    ) -> "ServiceEndpoint":
+        """Expose a service running inside the sandbox and return its URL.
+
+        The sandbox agent handles commands and files; this is for a *server*
+        running in the sandbox that a client needs to speak a protocol to — an
+        OpenEnv environment server, an MCP server, a dev server.
+
+        The returned URL authenticates itself, so it works with clients that
+        cannot attach an ``X-API-Key`` header (a raw WebSocket client, a
+        browser). Treat it as a bearer credential: scope it with ``ttl_seconds``
+        and keep it out of logs.
+
+        Args:
+            port: Port the service listens on inside the sandbox.
+            ttl_seconds: Lifetime of the URL. Server default if omitted.
+            wait_ready: Block until the service answers ``health_path``. The
+                sandbox being ready only means the *agent* is up, so a server
+                you just launched may still be starting.
+            health_path: Path polled when ``wait_ready`` is true.
+            ready_timeout: Seconds to wait when ``wait_ready`` is true.
+
+        Returns:
+            ServiceEndpoint: Carries ``url``, ``port``, and ``expires_at``.
+
+        Example::
+
+            sandbox.exec("nohup python -m http.server 8000 &")
+            endpoint = sandbox.expose_service(8000, wait_ready=True, health_path="/")
+            requests.get(endpoint.url)
+        """
+        payload = {
+            "port": port,
+            "wait_ready": wait_ready,
+            "health_path": health_path,
+            "ready_timeout": ready_timeout,
+        }
+        if ttl_seconds is not None:
+            payload["ttl_seconds"] = ttl_seconds
+
+        data = self._client._request(
+            "POST", f"/sandboxes/{self.sandbox_id}/services", json=payload
+        )
+        return ServiceEndpoint(data)
+
+    def list_services(self) -> list[int]:
+        """Return the ports this sandbox currently exposes."""
+        data = self._client._request("GET", f"/sandboxes/{self.sandbox_id}/services")
+        return data.get("ports", [])
+
+    def revoke_service(self, port: int) -> None:
+        """Stop exposing *port*.
+
+        Effective immediately, including for URLs that have not yet expired.
+        """
+        self._client._request("DELETE", f"/sandboxes/{self.sandbox_id}/services/{port}")
 
     def exec(
         self,
@@ -644,11 +779,9 @@ class SandboxClient:
             base_url or os.environ.get("SANDBOX_BASE_URL") or "http://localhost:8000"
         ).rstrip("/")
         self.timeout = timeout
-        self.session = requests.Session()
         # Use provided api_key or fall back to environment variable
         self.api_key = api_key or os.environ.get("SANDBOX_API_KEY")
-        if self.api_key:
-            self.session.headers["X-API-Key"] = self.api_key
+        self.session = _ScopedApiKeySession(self.base_url, self.api_key)
         # Use provided prefix or fall back to environment variable
         self.prefix = prefix or os.environ.get("SANDBOX_PREFIX")
         self.max_retries = 3
@@ -972,6 +1105,57 @@ class AsyncSandboxInstance:
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
             self._heartbeat_task = None
+
+    async def heartbeat(self) -> None:
+        """Send a single heartbeat now.
+
+        The async counterpart to :meth:`SandboxInstance.heartbeat`; see there
+        for when to prefer this over :meth:`start_heartbeat`.
+        """
+        await self._client._request("POST", f"/sandboxes/{self.sandbox_id}/heartbeat")
+
+    async def expose_service(
+        self,
+        port: int,
+        ttl_seconds: int | None = None,
+        wait_ready: bool = False,
+        health_path: str = "/health",
+        ready_timeout: int = 60,
+    ) -> "ServiceEndpoint":
+        """Expose a service running inside the sandbox and return its URL.
+
+        The async counterpart to :meth:`SandboxInstance.expose_service`; see
+        there for the full description and the bearer-credential caveat.
+        """
+        payload = {
+            "port": port,
+            "wait_ready": wait_ready,
+            "health_path": health_path,
+            "ready_timeout": ready_timeout,
+        }
+        if ttl_seconds is not None:
+            payload["ttl_seconds"] = ttl_seconds
+
+        data = await self._client._request(
+            "POST", f"/sandboxes/{self.sandbox_id}/services", json=payload
+        )
+        return ServiceEndpoint(data)
+
+    async def list_services(self) -> list[int]:
+        """Return the ports this sandbox currently exposes."""
+        data = await self._client._request(
+            "GET", f"/sandboxes/{self.sandbox_id}/services"
+        )
+        return data.get("ports", [])
+
+    async def revoke_service(self, port: int) -> None:
+        """Stop exposing *port*.
+
+        Effective immediately, including for URLs that have not yet expired.
+        """
+        await self._client._request(
+            "DELETE", f"/sandboxes/{self.sandbox_id}/services/{port}"
+        )
 
     async def exec(
         self,

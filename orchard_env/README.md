@@ -14,6 +14,9 @@ turns: run commands, upload/download files, apply git patches, open PTY sessions
 - **Any-harness training** — the popular agent harnesses (`codex`, `claude`, `pi`,
   `opencode`, `hermes`) are preinstalled on `PATH` in every sandbox, so you can
   collect rollouts under whichever harness you train against.
+- **Service endpoints** — expose a server running inside a sandbox (an OpenEnv
+  environment server, an MCP server, a dev server) at a URL that HTTP and
+  WebSocket clients outside the cluster can drive. Opt-in.
 
 <p align="center">
   <img src="docs/figures/orchard-architecture.png" alt="Orchard Env architecture" width="850">
@@ -81,6 +84,31 @@ with SandboxClient() as client:
         sandbox.download_file("/workspace/output.txt", "local_output.txt")
         sandbox.apply_patch(patch_content)
 ```
+
+### Talking to a server inside a sandbox
+
+`exec` covers agents that run commands. When the workload is a long-running
+server instead — an OpenEnv environment server, an MCP server, a dev server —
+expose it and drive it over HTTP or WebSocket:
+
+```python
+with SandboxClient() as client:
+    with client.create_sandbox("my-env:latest") as sandbox:
+        sandbox.exec("nohup python -m http.server 8000 > /tmp/log 2>&1 &")
+
+        endpoint = sandbox.expose_service(8000, wait_ready=True, health_path="/")
+        requests.get(f"{endpoint.url}/index.html")   # no API key needed
+        sandbox.revoke_service(8000)
+```
+
+The URL carries its own credential, so clients that cannot set headers (a raw
+WebSocket client, a browser) work unchanged — and appending a path just works,
+so a client that adds `/ws` gets a valid URL. Treat the URL as a bearer token:
+scope it with `ttl_seconds` and revoke it when done.
+
+Requires `ENABLE_SERVICE_ENDPOINTS=true`, a dedicated
+`SERVICE_PUBLIC_BASE_URL`, and `SERVICE_TOKEN_SECRET` on the orchestrator. See
+the [API reference](docs/api.md#service-endpoints).
 
 ### Asynchronous client
 
@@ -276,6 +304,31 @@ wherever it is available.
 > a new tag (e.g. `TOOLS_TAG=2026-07-27 ./scripts/build_push.sh tools`) and point
 > `SANDBOX_TOOLS_IMAGE` at it so every node picks up the change.
 
+## Sandbox service endpoints
+
+Off by default. Enable them when something inside the sandbox listens on a port
+and a client outside the cluster needs to talk to it.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `ENABLE_SERVICE_ENDPOINTS` | `false` | Master switch |
+| `SERVICE_PUBLIC_BASE_URL` | — | Wildcard template, e.g. `https://{subdomain}.sandboxes.example.net` |
+| `SERVICE_ALLOW_INSECURE_HTTP` | `false` | Development-only HTTP escape hatch |
+| `SERVICE_TOKEN_SECRET` | — | Required HMAC key for service URLs |
+| `SERVICE_TOKEN_TTL_SECONDS` | `3600` | Lifetime of a service URL |
+| `SERVICE_RESERVED_PORTS` | — | Extra ports that may never be exposed |
+| `MAX_SERVICES_PER_SANDBOX` | `8` | Ports one sandbox may expose at once |
+| `SERVICE_TRAFFIC_REFRESHES_HEARTBEAT` | `true` | Proxied traffic keeps the sandbox alive |
+| `SERVICE_PROXY_MAX_REQUEST_BYTES` | `16777216` | Maximum proxied request body |
+
+A service URL is a **bearer credential**: whoever holds it can reach that port
+on that sandbox until it expires. `SERVICE_PUBLIC_BASE_URL` must be a wildcard
+HTTPS template on a separate registrable domain from the management API.
+Orchard gives every capability a different hostname, which is the browser
+security boundary between hostile sandbox services. Configure wildcard DNS and
+TLS, redact `/s/*` in ingress logs, keep URLs out of traces and referrers, and
+revoke them when finished. The in-pod agent port is never exposable.
+
 ## Development
 
 ```bash
@@ -297,6 +350,7 @@ export SANDBOX_BASE_URL="http://your-orchestrator-host"
 export SANDBOX_API_KEY="your-api-key"
 python tests/integration/soak.py
 python tests/integration/sandbox_tools.py
+python tests/integration/service_endpoint.py
 ```
 
 See [tests/README.md](tests/README.md) for what each one covers.

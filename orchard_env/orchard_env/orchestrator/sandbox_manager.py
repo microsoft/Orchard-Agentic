@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import secrets
 import time
 from dataclasses import asdict, dataclass, field
 
@@ -56,6 +57,7 @@ class SandboxManager:
         # In-memory fallback (used when Redis is disabled)
         self._sandboxes: dict[str, Sandbox] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._services: dict[str, dict[int, str]] = {}
         self._global_lock = asyncio.Lock()
 
     def set_pod_watcher(self, pod_watcher):
@@ -114,7 +116,13 @@ class SandboxManager:
 
         Returns None if pod IP is not available.
         """
-        # 1. PodWatcher local cache (fastest)
+        sandbox = await self.get_sandbox(sandbox_id)
+        if not sandbox:
+            return None
+
+        # 1. PodWatcher local cache (fastest). A new sandbox creation clears
+        # this entry before the pod is created, and deletion clears it before
+        # the ID can be reused.
         if self._pod_watcher:
             ip = self._pod_watcher.get_pod_ip(sandbox_id)
             if ip:
@@ -123,15 +131,27 @@ class SandboxManager:
         # 2. Redis cache (cross-replica, avoids K8s API call)
         redis_store = await self._get_redis_store()
         if redis_store:
-            ip = await redis_store.get_pod_ip(sandbox_id)
+            ip = await redis_store.get_pod_ip(sandbox_id, sandbox.created_at)
             if ip:
                 return ip
 
         # 3. K8s API fallback (slow path — write back to Redis)
         ip = await self._fetch_pod_ip_from_k8s(sandbox_id)
         if ip and redis_store:
-            await redis_store.store_pod_ip(sandbox_id, ip)
+            await redis_store.store_pod_ip(sandbox_id, ip, sandbox.created_at)
         return ip
+
+    async def get_current_pod_ip(self, sandbox_id: str) -> str | None:
+        """Resolve the current Kubernetes pod directly, bypassing every cache.
+
+        Service capabilities cross a trust boundary. A stale PodWatcher or
+        Redis entry must never route one to a prior pod after a custom sandbox
+        ID is reused, so service connection establishment pays one control-plane
+        read for an authoritative target.
+        """
+        if not await self.get_sandbox(sandbox_id):
+            return None
+        return await self._fetch_pod_ip_from_k8s(sandbox_id)
 
     async def _fetch_pod_ip_from_k8s(self, sandbox_id: str) -> str | None:
         """Query K8s API for pod IP (slow path)."""
@@ -164,7 +184,9 @@ class SandboxManager:
         if ip:
             redis_store = await self._get_redis_store()
             if redis_store:
-                await redis_store.store_pod_ip(sandbox_id, ip)
+                sandbox = await self.get_sandbox(sandbox_id)
+                if sandbox:
+                    await redis_store.store_pod_ip(sandbox_id, ip, sandbox.created_at)
 
     async def _get_redis_store(self):
         """Get Redis store, initializing if needed."""
@@ -216,6 +238,7 @@ class SandboxManager:
         else:
             async with self._global_lock:
                 self._sandboxes[sandbox.sandbox_id] = sandbox
+                self._services.pop(sandbox.sandbox_id, None)
                 if sandbox.sandbox_id not in self._locks:
                     self._locks[sandbox.sandbox_id] = asyncio.Lock()
 
@@ -243,6 +266,7 @@ class SandboxManager:
                     del self._sandboxes[sandbox_id]
                 if sandbox_id in self._locks:
                     del self._locks[sandbox_id]
+                self._services.pop(sandbox_id, None)
 
     async def _get_all_sandbox_ids(self) -> set:
         """Get all tracked sandbox IDs."""
@@ -311,6 +335,16 @@ class SandboxManager:
         pod_created = False
 
         try:
+            # A caller may intentionally reuse a custom sandbox ID after the
+            # previous pod was deleted. Clear every local/shared cache before
+            # creating the new pod so no stale target can be blessed as the new
+            # sandbox incarnation.
+            if self._pod_watcher:
+                self._pod_watcher.prepare_sandbox(sandbox_id)
+            redis_store = await self._get_redis_store()
+            if redis_store:
+                await redis_store.delete_pod_ip(sandbox_id)
+
             # Throttle concurrent creates to avoid overwhelming K8s API server
             # With 5 replicas × 20 concurrent creates = up to 100 K8s create calls
             async with self._create_semaphore:
@@ -561,13 +595,10 @@ class SandboxManager:
 
         # 1. Remove from store immediately — sandbox is "gone" for callers.
         await self._delete_sandbox_record(sandbox_id)
+        if self._pod_watcher:
+            self._pod_watcher.remove_sandbox(sandbox_id)
 
-        # 2. Remove pod IP cache from Redis.
-        redis_store = await self._get_redis_store()
-        if redis_store:
-            await redis_store.delete_pod_ip(sandbox_id)
-
-        # 3. Clean up K8s resources in the background (best-effort).
+        # 2. Clean up K8s resources in the background (best-effort).
         asyncio.create_task(
             self._background_delete_k8s_resources(
                 sandbox_id, pod_name, namespace, block_network
@@ -636,6 +667,96 @@ class SandboxManager:
         await self._update_sandbox(sandbox_id, {"last_heartbeat": now})
         logger.debug(f"Heartbeat received for sandbox {sandbox_id}")
         return True
+
+    async def expose_service(
+        self, sandbox_id: str, port: int
+    ) -> tuple[str, bool] | None:
+        """Expose a port and return ``(generation, created)``.
+
+        Service state is stored separately from the sandbox JSON record. This
+        keeps rolling upgrades schema-compatible with replicas that do not know
+        about service endpoints yet. The opaque generation changes after a
+        revoke/re-expose cycle, permanently invalidating old URLs.
+        """
+        generation = secrets.token_urlsafe(18)
+        redis_store = await self._get_redis_store()
+
+        if redis_store:
+            result = await redis_store.expose_service(
+                sandbox_id,
+                port,
+                generation,
+                settings.max_services_per_sandbox,
+            )
+            if result and result[1]:
+                logger.info(f"Exposed port {port} on sandbox {sandbox_id}")
+            return result
+
+        async with self._global_lock:
+            if sandbox_id not in self._sandboxes:
+                return None
+            services = self._services.setdefault(sandbox_id, {})
+            existing = services.get(port)
+            if existing:
+                return existing, False
+            if len(services) >= settings.max_services_per_sandbox:
+                raise ValueError(
+                    f"Sandbox {sandbox_id} already exposes "
+                    f"{settings.max_services_per_sandbox} ports "
+                    "(MAX_SERVICES_PER_SANDBOX)"
+                )
+            services[port] = generation
+
+        logger.info(f"Exposed port {port} on sandbox {sandbox_id}")
+        return generation, True
+
+    async def get_service_generation(self, sandbox_id: str, port: int) -> str | None:
+        """Return the active generation for a port."""
+        sandbox = await self.get_sandbox(sandbox_id)
+        if not sandbox:
+            return None
+        redis_store = await self._get_redis_store()
+        if redis_store:
+            return await redis_store.get_service_generation(
+                sandbox_id, port, sandbox.created_at
+            )
+        async with self._global_lock:
+            return self._services.get(sandbox_id, {}).get(port)
+
+    async def list_services(self, sandbox_id: str) -> list[int] | None:
+        """Return exposed ports, or None if the sandbox does not exist."""
+        sandbox = await self.get_sandbox(sandbox_id)
+        if not sandbox:
+            return None
+        redis_store = await self._get_redis_store()
+        if redis_store:
+            services = await redis_store.get_services(sandbox_id, sandbox.created_at)
+            return sorted(services)
+        async with self._global_lock:
+            return sorted(self._services.get(sandbox_id, {}))
+
+    async def revoke_service(self, sandbox_id: str, port: int) -> bool:
+        """Remove *port* from a sandbox's allowlist.
+
+        Revocation takes effect immediately, including for capability tokens
+        that have not yet expired, because the proxy re-checks the allowlist on
+        every request.
+
+        Returns:
+            True if the port was exposed and has been revoked.
+        """
+
+        redis_store = await self._get_redis_store()
+        if redis_store:
+            revoked = await redis_store.revoke_service(sandbox_id, port)
+        else:
+            async with self._global_lock:
+                services = self._services.get(sandbox_id, {})
+                revoked = services.pop(port, None) is not None
+
+        if revoked:
+            logger.info(f"Revoked port {port} on sandbox {sandbox_id}")
+        return revoked
 
     async def cleanup_expired_sandboxes(self) -> int:
         """Clean up sandboxes that exceeded TTL, stuck in pending state, or missed heartbeats."""

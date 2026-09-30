@@ -21,6 +21,19 @@ spec:
         - name: redis
           image: ${ACR_NAME}.azurecr.io/redis:7-alpine
           imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orchestrator-api-keys
+                  key: REDIS_PASSWORD
+            # redis-cli reads this automatically, so probes authenticate
+            # without putting the password in command arguments or logs.
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: orchestrator-api-keys
+                  key: REDIS_PASSWORD
           ports:
             - containerPort: 6379
           resources:
@@ -32,12 +45,15 @@ spec:
               memory: 16Gi
           command:
             - redis-server
+          args:
             - --appendonly
             - "yes"
             - --maxmemory
             - 10gb
             - --maxmemory-policy
             - allkeys-lru
+            - --requirepass
+            - $(REDIS_PASSWORD)
           volumeMounts:
             - name: redis-data
               mountPath: /data
@@ -75,3 +91,27 @@ spec:
     - port: 6379
       targetPort: 6379
   type: ClusterIP
+---
+# Redis carries sandbox lifecycle, capability generations, and pod targets.
+# Even a sandbox with block_network=false must never reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ingress-orchestrator-only
+  namespace: orchestrator
+  labels:
+    app: redis
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: sandbox-orchestrator
+      ports:
+        - protocol: TCP
+          port: 6379

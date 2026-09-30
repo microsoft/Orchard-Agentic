@@ -7,6 +7,7 @@ from orchard_env.client.sandbox_client import (
     JobResult,
     SandboxClient,
     SandboxInstance,
+    ServiceEndpoint,
 )
 
 __version__ = "0.1.0"
@@ -17,6 +18,7 @@ __all__ = [
     "SandboxInstance",
     "AsyncSandboxInstance",
     "JobResult",
+    "ServiceEndpoint",
     "ContainerProcess",
     "AsyncContainerProcess",
 ]

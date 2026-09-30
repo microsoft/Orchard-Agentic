@@ -490,6 +490,12 @@ class K8sClient:
             resources=resources,
             working_dir=working_dir,
             image_pull_policy="IfNotPresent",
+            # Override any AGENT_PORT baked into an arbitrary user image. The
+            # agent port is part of Orchard's trusted control plane and must
+            # match the port reserved from service exposure.
+            env=[
+                client.V1EnvVar(name="AGENT_PORT", value=str(agent_port)),
+            ],
             ports=[client.V1ContainerPort(container_port=agent_port, name="agent")],
             startup_probe=startup_probe,
             readiness_probe=readiness_probe,

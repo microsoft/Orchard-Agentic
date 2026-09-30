@@ -241,9 +241,39 @@ matching upper-case environment variable.
 | `HEARTBEAT_TIMEOUT_SECONDS` | `600` | Sandbox considered dead without a heartbeat |
 | `USE_REDIS` | `true` | Required for more than one replica |
 | `REDIS_URL` | in-cluster Redis | Redis connection URL |
+| `REDIS_PASSWORD` | (secret) | Required unless the password is embedded in `REDIS_URL` |
+| `REDIS_REQUIRE_AUTH` | `true` | Fail closed when Redis has no credentials |
 | `REQUIRE_API_KEY` | `true` | Enforce `X-API-Key` |
 | `API_KEYS` | (secret) | Comma/whitespace-separated valid keys |
+| `ENABLE_SERVICE_ENDPOINTS` | `false` | Allow exposing services inside sandboxes |
+| `SERVICE_PUBLIC_BASE_URL` | — | Wildcard template, e.g. `https://{subdomain}.sandboxes.example.net` |
+| `SERVICE_ALLOW_INSECURE_HTTP` | `false` | Development-only HTTP escape hatch |
+| `SERVICE_TOKEN_SECRET` | — | Required HMAC key for service URLs |
+| `SERVICE_TOKEN_TTL_SECONDS` | `3600` | Lifetime of a service URL |
+| `SERVICE_RESERVED_PORTS` | — | Extra ports that may never be exposed |
+| `MAX_SERVICES_PER_SANDBOX` | `8` | Ports one sandbox may expose at once |
+| `SERVICE_TRAFFIC_REFRESHES_HEARTBEAT` | `true` | Proxied traffic keeps the sandbox alive |
+| `SERVICE_ACTIVE_HEARTBEAT_INTERVAL_SECONDS` | `60` | Refresh interval during active streams/sockets |
+| `SERVICE_PROXY_TIMEOUT_SECONDS` | `300` | Upstream request timeout |
+| `SERVICE_PROXY_HANDSHAKE_TIMEOUT_SECONDS` | `15` | WebSocket handshake deadline |
+| `SERVICE_PROXY_MAX_REQUEST_BYTES` | `16777216` | Max proxied request body |
+| `SERVICE_PROXY_MAX_MESSAGE_BYTES` | `16777216` | Max proxied WebSocket frame |
 | `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | Logging |
+
+Service endpoints are off by default because they deliberately open a hole in
+the sandbox boundary. When enabling them:
+
+- Set `SERVICE_PUBLIC_BASE_URL` to a wildcard HTTPS template for sandbox
+  traffic, such as `https://{subdomain}.sandboxes.example.net`, on a separate
+  registrable domain from the management API. Configure matching wildcard DNS
+  and TLS. Each capability receives a different hostname, isolating browser
+  localStorage, IndexedDB, caches, BroadcastChannel, and other origin state.
+- Set `SERVICE_TOKEN_SECRET` to a separate random value. The feature fails
+  closed when it is absent.
+- Route only `/s/*` to the service origin, and redact that path in ingress,
+  load-balancer, and trace logs because it contains a bearer capability.
+- The agent port (`AGENT_PORT`) is always refused; add anything else sensitive
+  to `SERVICE_RESERVED_PORTS`.
 
 Apply changes with:
 
@@ -254,8 +284,10 @@ kubectl rollout restart deployment/sandbox-orchestrator -n orchestrator
 
 ### Redis
 
-Redis shares sandbox and job state between orchestrator replicas and provides the
-distributed exec locks. It is enabled by default.
+Redis shares sandbox and job state between orchestrator replicas and provides
+the distributed exec locks. It is enabled by default. The reference deployment
+requires `REDIS_PASSWORD` and applies an ingress NetworkPolicy that allows only
+orchestrator pods; even a sandbox with `block_network=false` cannot reach it.
 
 ```bash
 kubectl apply -f k8s/redis.yaml            # deploy in-cluster Redis
@@ -265,8 +297,9 @@ kubectl apply -f k8s/redis.yaml            # deploy in-cluster Redis
 # single replica only — configmap.yaml
 USE_REDIS: "false"
 
-# or point at a managed instance
-REDIS_URL: "redis://:password@your-redis.example.com:6380/0?ssl=true"
+# or point at a managed instance (prefer a secret REDIS_PASSWORD)
+REDIS_URL: "rediss://your-redis.example.com:6380/0"
+REDIS_PASSWORD: "..."
 ```
 
 ### Sandbox resource limits

@@ -51,6 +51,26 @@ data:
   SANDBOX_TOOLS_VOLUME_MODE: "image"
   SANDBOX_TOOLS_MOUNT_PATH: "/opt/sandbox-tools"
   
+  # Sandbox service endpoints — proxy HTTP/WebSocket to a user service running
+  # inside a sandbox (OpenEnv env server, MCP server, dev server).
+  # Off by default: it deliberately opens a hole in the sandbox boundary.
+  ENABLE_SERVICE_ENDPOINTS: "false"
+  SERVICE_PUBLIC_BASE_URL: ""
+  SERVICE_ALLOW_INSECURE_HTTP: "false"
+  SERVICE_TOKEN_TTL_SECONDS: "3600"
+  MAX_SERVICES_PER_SANDBOX: "8"
+  SERVICE_RESERVED_PORTS: ""
+  SERVICE_TRAFFIC_REFRESHES_HEARTBEAT: "true"
+  SERVICE_ACTIVE_HEARTBEAT_INTERVAL_SECONDS: "60"
+  SERVICE_PROXY_TIMEOUT_SECONDS: "300"
+  SERVICE_PROXY_HANDSHAKE_TIMEOUT_SECONDS: "15"
+  SERVICE_PROXY_MAX_REQUEST_BYTES: "16777216"
+  SERVICE_PROXY_MAX_MESSAGE_BYTES: "16777216"
+
+  # Redis authentication is mandatory in the reference deployment. The
+  # password comes from orchestrator-api-keys via envFrom.
+  REDIS_REQUIRE_AUTH: "true"
+
   # TTL settings
   SANDBOX_TTL_HOURS: "2"
   ORPHAN_JOB_TTL_HOURS: "1"

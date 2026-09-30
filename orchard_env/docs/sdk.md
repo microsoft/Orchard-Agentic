@@ -66,12 +66,49 @@ API — needs `block_network=False`.
 | `download_file(remote_path, local_path)` | Download a file |
 | `download_content(remote_path)` | Download file content as bytes |
 | `list_files(remote_path)` | List a directory |
+| `expose_service(port, ...)` | Expose a service inside the sandbox, returns `ServiceEndpoint` |
+| `list_services()` | List exposed ports |
+| `revoke_service(port)` | Stop exposing a port |
+| `heartbeat()` | Send one heartbeat now |
+| `start_heartbeat(interval)` / `stop_heartbeat()` | Background heartbeat loop |
 | `get_job(job_id)` | Fetch job status and results |
 | `delete()` | Delete the sandbox |
 
 `exec()` also accepts `login_shell=True` (runs under `bash -lc` instead of
 `bash -c`) and `pty=True` for an interactive session backed by
 `ContainerProcess` / `AsyncContainerProcess`.
+
+## `ServiceEndpoint`
+
+`exec` and the file methods cover agents that *run commands*. When the workload
+is instead a long-running server inside the sandbox — an OpenEnv environment
+server, an MCP server, a dev server — `expose_service()` returns a URL a client
+outside the cluster can talk to.
+
+```python
+sandbox.exec("nohup python -m http.server 8000 > /tmp/log 2>&1 &")
+
+endpoint = sandbox.expose_service(8000, wait_ready=True, health_path="/")
+endpoint.url         # https://orchestrator/s/<token>
+endpoint.ws_url      # wss://orchestrator/s/<token>
+endpoint.port
+endpoint.expires_at
+
+requests.get(f"{endpoint.url}/index.html")
+sandbox.revoke_service(8000)
+```
+
+`wait_ready=True` is worth setting: a sandbox reports ready once the *in-pod
+agent* is up, which can be well before a server you just launched has finished
+binding.
+
+> **The URL is a bearer credential.** Anyone holding it can reach that port on
+> that sandbox until `expires_at`. Keep it out of logs, scope it with
+> `ttl_seconds`, and call `revoke_service()` when finished — revocation takes
+> effect immediately, even for URLs that have not expired. `repr()` deliberately
+> omits the URL so it does not leak into log lines.
+
+Requires `ENABLE_SERVICE_ENDPOINTS=true` on the orchestrator.
 
 ## `JobResult`
 

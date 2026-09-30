@@ -88,6 +88,17 @@ if grep -q REPLACE_WITH_GENERATED_KEY k8s/secret.yaml; then
     echo "  Run 'python k8s/gen_keys.py' and paste real keys before deploying." >&2
     exit 1
 fi
+if grep -q 'ENABLE_SERVICE_ENDPOINTS: "true"' "$TEMP_CONFIGMAP" &&
+   grep -q REPLACE_WITH_A_RANDOM_32_BYTE_SECRET k8s/secret.yaml; then
+    echo "Error: service endpoints are enabled but SERVICE_TOKEN_SECRET is unset." >&2
+    echo "  Replace its placeholder in k8s/secret.yaml with a random value." >&2
+    exit 1
+fi
+if grep -q REPLACE_WITH_A_DIFFERENT_RANDOM_32_BYTE_SECRET k8s/secret.yaml; then
+    echo "Error: k8s/secret.yaml still contains the Redis password placeholder." >&2
+    echo "  Replace REDIS_PASSWORD with a separate random value." >&2
+    exit 1
+fi
 kubectl apply -f k8s/secret.yaml
 
 echo "6. Creating shared sandbox namespace..."
