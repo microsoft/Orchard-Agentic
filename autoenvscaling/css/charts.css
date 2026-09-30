@@ -1,0 +1,125 @@
+/* Results charts and the HiL-Bench table (js/charts.js). Drawn like the paper's matplotlib
+   figures (analysis/plot_*.py) but flat and sparse: no cards, no shadows, numbers in tooltips.
+   Chart-only colours below come from those scripts; everything else uses site.css tokens. */
+.ch {
+  --ch-edge: #231A33;   /* bar and marker edges (EDGE) */
+  --ch-text: #3A3145;   /* tick labels and marker outlines (TEXT / TICK) */
+  --ch-grid: #DED8EC;   /* gridlines (GRID) */
+  --ch-spine: #C3B9D6;  /* left and bottom spines (SPINE) */
+  --ch-ref: #8C8FC2;    /* Cold-Start reference line (REFERENCE) */
+  --ch-base: #B9B4C7;   /* Base solver bars (BASE) */
+  --ch-wo: #D07832;     /* self-play run without proposer training */
+  position: relative;
+}
+
+/* Legend and controls, one row above the plot */
+.ch-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; margin: 0 0 8px; }
+.ch-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 16px; }
+.ch-toggle, .ch-item {
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 0;
+  font-size: 13px; line-height: 1.3; color: var(--ink);
+}
+.ch-toggle { border: 0; background: none; cursor: pointer; text-align: left; }
+.ch-toggle:hover .ch-toggle-label { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.ch-toggle[aria-pressed="false"] { color: var(--muted); }
+.ch-toggle[aria-pressed="false"] .ch-toggle-label { text-decoration: line-through; text-decoration-color: var(--muted); }
+.ch-toggle[aria-pressed="false"] .ch-key { opacity: .25; }
+.ch-key { flex: none; display: inline-block; width: 12px; height: 12px; border: 1px solid var(--ch-edge); }
+.ch-glyph { flex: none; display: block; overflow: visible; }
+.ch-glyph-line { stroke-width: 2.4; stroke-linecap: round; }
+.ch-glyph-line.is-dot { stroke-width: 1.8; stroke-dasharray: 1.5 3; }
+.ch-field { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; color: var(--muted); max-width: 100%; }
+.ch .seg { max-width: 100%; }
+.ch .seg button { font-size: 13px; padding: 4px 10px; min-width: 0; }
+
+/* Axes */
+.ch-plot { width: 100%; }
+.ch-svg { display: block; width: 100%; overflow: visible; font-family: inherit; }
+.ch-svg:focus { outline: none; }
+.ch-svg:focus-visible { outline: 2px solid var(--purple-mid); outline-offset: 4px; }
+.ch-svg[tabindex] { touch-action: pan-y pinch-zoom; }
+.ch-grid { stroke: var(--ch-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.ch-spine { stroke: var(--ch-spine); stroke-width: 1; shape-rendering: crispEdges; }
+.ch-tick { fill: var(--ch-text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ch-axis-title { fill: var(--ch-text); font-size: 12px; }
+.ch-xlabel, .ch-ylabel { fill: var(--ch-text); font-size: 12px; }
+.ch-rowlabel { fill: var(--ink); font-size: 13px; }
+.ch-panel-title { fill: var(--ch-edge); font-size: 13px; font-weight: 700; }
+.ch-halo { paint-order: stroke; stroke: var(--page); stroke-width: 4px; stroke-linejoin: round; }
+
+/* Marks */
+.ch-bar { stroke: var(--ch-edge); stroke-width: .6; }
+.ch-bar.is-harness { stroke-width: 1.1; }
+.ch-bar.is-thin { stroke: var(--ch-text); stroke-width: .5; }
+.ch-mark { stroke: var(--ch-text); stroke-width: .8; }
+.ch-mark.is-edge { stroke: var(--ch-edge); stroke-width: .6; }
+.ch-mark.is-strong { stroke: var(--ch-edge); stroke-width: 1.1; }
+.ch-stem { stroke-width: 3.5; stroke-linecap: round; }
+.ch-line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.ch-faint { fill: none; stroke-width: 1; opacity: .16; stroke-linejoin: round; }
+.ch-trend { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.ch-ref { stroke: var(--ch-ref); stroke-width: 1.5; stroke-dasharray: 1.5 3.5; stroke-linecap: round; }
+
+/* Text on the plot */
+.ch-value { fill: var(--ch-edge); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ch-value.is-bold { font-weight: 700; }
+.ch-value.is-ours { fill: var(--purple); font-weight: 700; }
+.ch-callout { fill: var(--purple); font-size: 12.5px; font-weight: 700; }
+.ch-bracket { fill: none; stroke: var(--purple); stroke-width: 1; }
+.ch-end { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ch-end.is-ours { font-weight: 700; }
+.ch-anno { fill: var(--muted); font-size: 11.5px; }
+
+/* Hover and focus: a faint band behind the group, or a crosshair */
+.ch-group { outline: none; }
+.ch-band { fill: var(--purple-tint); opacity: 0; transition: opacity .12s; }
+.ch-group:hover .ch-band, .ch-group.is-active .ch-band { opacity: .6; }
+.ch-group:focus-visible .ch-band { opacity: .6; stroke: var(--purple-mid); stroke-width: 1.5; }
+.ch-cross line { stroke: var(--muted); stroke-width: 1; shape-rendering: crispEdges; }
+.ch-cross circle { stroke: var(--page); stroke-width: 2; }
+.ch-hit { fill: transparent; cursor: crosshair; }
+
+/* Tooltip: absolutely placed inside .ch, never wider than it */
+.ch-tip {
+  position: absolute; left: 0; top: 0; z-index: 5; width: max-content; max-width: min(300px, 100%);
+  padding: 8px 10px; background: var(--page); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(31, 27, 36, .06);
+  font-size: 13px; line-height: 1.35; color: var(--ink); pointer-events: none;
+}
+.ch-tip-title { font-weight: 600; margin: 0 0 4px; }
+.ch-tip-meta { margin: -2px 0 5px; font-size: 12px; color: var(--muted); }
+.ch-tip-head { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.ch-tip-row { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); column-gap: 8px; align-items: baseline; margin-top: 3px; }
+.ch-tip-row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ch-tip-label { color: var(--muted); }
+.ch-tip-key { align-self: center; width: 16px; border-top: 3px solid; }
+.ch-tip-key.is-dash { border-top: 2px dashed; }
+.ch-tip-sub { grid-column: 2 / -1; font-size: 12px; color: var(--muted); }
+.ch-tip-foot { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+/* One optional muted line under a chart */
+.ch-note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+
+/* HiL-Bench: a plain booktabs table */
+.ch-table-wrap { max-width: 100%; overflow-x: auto; }
+.ch-hil { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; border-top: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); }
+.ch-hil caption { caption-side: bottom; padding: 10px 0 0; text-align: left; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.ch-hil th, .ch-hil td { padding: 7px 12px; text-align: left; vertical-align: baseline; }
+.ch-hil th:first-child { padding-left: 4px; }
+.ch-hil thead th { font-weight: 600; border-bottom: 1px solid var(--ink); }
+.ch-hil tbody th { font-weight: 400; }
+.ch-hil .num { text-align: right; white-space: nowrap; }
+.ch-hil tbody tr:hover { background: var(--bg); }
+.ch-hil tr.is-ours { background: var(--purple-tint); }
+.ch-hil tr.is-ours th, .ch-hil tr.is-ours td { font-weight: 700; }
+
+@media (max-width: 520px) {
+  .ch .seg button { padding: 4px 8px; font-size: 12.5px; }
+  .ch-legend { gap: 0 12px; }
+  .ch-hil { font-size: 13px; }
+  .ch-hil th, .ch-hil td { padding: 6px 6px; }
+  .ch-hil thead .num { white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ch-band { transition: none; }
+}

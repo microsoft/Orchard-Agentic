@@ -1,0 +1,105 @@
+/* One failure, three proposers (js/compare.js). Flat: hairlines and whitespace; colour for
+   stages, author identity (a small dot and the markers), and ✓/✗. */
+.cmp-col.is-gpt { --author: var(--gpt); }
+.cmp-col.is-opus { --author: var(--opus); }
+.cmp-col.is-qwen { --author: var(--qwen); }
+
+/* Case tabs */
+.cmp-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 18px; border-bottom: 1px solid var(--line); }
+.cmp-tab {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0;
+  margin: 0 0 -1px; padding: 8px 14px 10px 0; border: 0; border-bottom: 2px solid transparent;
+  background: none; text-align: left; cursor: pointer;
+}
+.cmp-tab:hover .cmp-tab-title { color: var(--purple); }
+.cmp-tab[aria-selected="true"] { border-bottom-color: var(--ink); }
+.cmp-tab-title { font-weight: 600; font-size: 15px; color: var(--muted); }
+.cmp-tab[aria-selected="true"] .cmp-tab-title { color: var(--ink); }
+.cmp-tab-label { font-size: 13px; color: var(--muted); }
+
+/* Seed */
+.cmp-seed { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px 32px; padding: 16px 20px; margin: 0 0 18px; }
+.cmp-seed-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.cmp-task { margin: 2px 0 10px; font-size: 16px; }
+.cmp-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.cmp-chips li {
+  font: 12.5px/1.4 var(--mono); padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.cmp-subhead { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.cmp-did { list-style: none; margin: 0; padding: 0; font-size: 14px; line-height: 1.5; }
+.cmp-did li { display: flex; gap: 8px; padding: 1px 0; }
+.cmp-mark { flex: none; width: 1em; font-weight: 700; }
+.cmp-did .is-ok .cmp-mark { color: var(--ok); }
+.cmp-did .is-bad .cmp-mark { color: var(--bad); }
+
+/* Columns */
+.cmp-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.cmp-col { display: flex; flex-direction: column; min-width: 0; padding: 16px; }
+.cmp-title { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 0; font-size: 17px; }
+.cmp-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--author); }
+.cmp-sub { font-size: 13px; font-weight: 400; color: var(--muted); }
+.cmp-stance { margin: 2px 0 12px; font-size: 14px; font-style: italic; color: var(--muted); }
+
+/* Strip with numbered markers */
+.cmp-track { position: relative; }
+.cmp-marks { position: relative; height: 28px; }
+.cmp-leaders { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.cmp-leader { fill: none; stroke: var(--muted); stroke-width: 1; }
+.cmp-leader.is-active { stroke: var(--ink); stroke-width: 1.5; }
+.cmp-marker {
+  position: absolute; top: 0; width: 18px; height: 18px; margin: 0; padding: 0; transform: translateX(-50%);
+  display: grid; place-items: center; border: 1px solid var(--author); border-radius: 50%;
+  background: var(--card); color: var(--author); font: 700 11px/1 var(--font); cursor: pointer;
+}
+.cmp-marker:hover, .cmp-marker.is-active { background: var(--author); color: #fff; }
+.cmp-strip { display: flex; height: 16px; min-width: 40px; }
+.cmp-cell { position: relative; flex: 1 1 0; min-width: 0; }
+.cmp-cell:first-child { border-radius: 2px 0 0 2px; }
+.cmp-cell:last-child { border-radius: 0 2px 2px 0; }
+.cmp-cell.is-active { z-index: 1; outline: 2px solid var(--ink); outline-offset: 1px; }
+.cmp-meta {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 8px 0 14px;
+  font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.cmp-share { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
+.cmp-share-item .stage { margin-right: 3px; }
+
+/* The three moments */
+.cmp-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 10px; }
+.cmp-step { padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; }
+.cmp-step.is-active { border-color: var(--ink); }
+.cmp-step-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 5px; }
+.cmp-num {
+  flex: none; align-self: center; display: grid; place-items: center; width: 18px; height: 18px;
+  border: 1px solid var(--author); border-radius: 50%; color: var(--author); font: 700 11px/1 var(--font);
+}
+.cmp-step.is-active .cmp-num { background: var(--author); color: #fff; }
+.cmp-step-title { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; }
+.cmp-turn { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cmp-lines { font: 12.5px/1.55 var(--mono); }
+.cmp-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmp-line.is-cmd { font-weight: 600; }
+.cmp-line.is-ok { color: #2C8052; color: color-mix(in srgb, var(--ok) 80%, var(--ink)); }
+.cmp-line.is-bad { color: var(--bad); }
+.cmp-line.is-path { color: var(--muted); }
+.cmp-line.is-add { color: #29674A; color: color-mix(in srgb, var(--ok) 60%, var(--ink)); }
+
+/* What it shipped */
+.cmp-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; }
+.cmp-ships { margin: 0 0 6px; }
+.cmp-tag { display: inline-block; margin: 0 0 8px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; font-size: 12px; color: var(--muted); }
+.cmp-replay { display: block; font-weight: 600; }
+.cmp-replay::after { content: " \2192"; }
+.cmp-muted { margin: 0; font-size: 13px; color: var(--muted); }
+
+@media (max-width: 899px) {
+  .cmp-cols { grid-template-columns: minmax(0, 1fr); }
+  .cmp-seed { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .cmp-tabs { grid-template-columns: minmax(0, 1fr); border-bottom: 0; }
+  .cmp-tab { margin: 0; padding: 6px 0 6px 12px; border-bottom: 0; border-left: 2px solid var(--line); }
+  .cmp-tab[aria-selected="true"] { border-left-color: var(--ink); }
+  .cmp-seed { padding: 14px; }
+}

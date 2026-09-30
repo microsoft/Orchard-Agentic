@@ -9,6 +9,7 @@ Self-contained HTML/CSS/JS — no build step, no dependencies.
 site/
 ├── index.html              # Orchard-Agentic collection landing page
 ├── orchard.html            # Orchard paper and project details
+├── autoenvscaling/         # AutoEnvScaling project page (built site; see its own index.html)
 ├── .nojekyll               # let GitHub Pages serve the assets/ folder as-is
 └── assets/
     ├── css/style.css
