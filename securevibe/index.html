@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SecureVibe: Making Vibe Coding More Secure</title>
+  <meta name="description" content="Teaching coding agents to plan, code, and test for security. SecureVibe combines a Security Suite with reinforcement learning and hint-guided self-distillation.">
+  <meta name="theme-color" content="#12695c">
+  <meta name="color-scheme" content="light dark">
+  <meta property="og:title" content="SecureVibe: Making Vibe Coding More Secure">
+  <meta property="og:description" content="Security planning, coding, and testing for more secure coding agents.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://microsoft.github.io/Orchard-Agentic/securevibe/">
+  <meta property="og:url" content="https://microsoft.github.io/Orchard-Agentic/securevibe/">
+  <meta property="og:image" content="https://microsoft.github.io/Orchard-Agentic/securevibe/assets/securevibe-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <script>try{const t=localStorage.getItem("sv-theme");if(t)document.documentElement.dataset.theme=t}catch{}</script>
+  <link rel="stylesheet" href="style.css?v=10">
+  <script src="site.js?v=17" defer></script>
+  <link rel="stylesheet" href="cases.css?v=18">
+  <script src="cases.js?v=15" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#overview">Skip to content</a>
+  <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark theme"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <header class="hero" id="top">
+    <a class="collection-link" href="../">← Orchard-Agentic</a>
+    <div class="wordmark"><svg viewBox="0 0 24 26" aria-hidden="true"><path d="M12 1 22 5v8c0 6-10 12-10 12S2 19 2 13V5Z"/><path d="m7 12 3.5 3.5 7-7"/></svg> SECUREVIBE</div>
+    <h1><span>SecureVibe</span>: Making Vibe Coding<br class="desktop-break"> More Secure</h1>
+    <p class="hero-sub">Teaching coding agents to plan, code, and test for the security requirements<br class="desktop-break"> that users don’t explicitly ask for.</p>
+    <p class="authors">Danqing Wang<sup>1,2*</sup>, Baolin Peng<sup>2</sup>, Zhepei Wei<sup>2,3*</sup>, Isadora White<sup>2,4*</sup>,<br class="desktop-break"> Wenlin Yao<sup>2</sup>, Hao Cheng<sup>2</sup>, Qianhui Wu<sup>2</sup>, Minseon Kim<sup>2</sup>,<br class="desktop-break"> Xingdi Yuan<sup>2</sup>, Lei Li<sup>1</sup>, Jianfeng Gao<sup>2</sup></p>
+    <p class="affiliations"><span><sup>1</sup>Carnegie Mellon University</span><span><sup>2</sup>Microsoft Research</span><span><sup>3</sup>University of Virginia, Charlottesville</span><span><sup>4</sup>University of California, San Diego</span></p>
+    <div class="inst-logos"><span class="logo-chip"><img src="assets/logos/cmu.svg" alt="Carnegie Mellon University" width="179" height="16"></span><span class="logo-chip msr"><img src="assets/logos/microsoft.svg" alt="" width="18" height="18"><span>Microsoft Research</span></span></div>
+    <p class="author-note">* Work done during an internship at Microsoft Research.</p>
+    <div class="resource-links" aria-label="Project resources">
+      <a class="resource primary" href="https://arxiv.org/abs/2609.38606"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg> Paper</a>
+      <a class="resource" href="https://github.com/MSR-Orchard/SecureVibe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg> Code</a>
+      <a class="resource" href="https://huggingface.co/datasets/dqwang122/SafeVibe"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg> Dataset</a>
+      <a class="resource" href="#citation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h4v4H7zM7 11c0 3-1 5-3 6M15 7h4v4h-4zM15 11c0 3-1 5-3 6"/></svg> BibTeX</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="lead" aria-label="Research summary">
+      <div class="vs-card" aria-label="Illustrative comparison of an insecure and a secure implementation">
+        <div class="vs-request"><span class="brief-label">THE USER’S REQUEST</span><p>“Implement template substitution for strings like <code>/user/${user.id}</code>, including nested properties.”</p></div>
+        <div class="vs-panes">
+          <article class="vs-pane bad">
+            <header><span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Vibe coding</span><span class="vs-badges"><em class="ok">✓ Functional</em><em class="no">✗ Security</em></span></header>
+<pre><code><span class="tk-k">function</span> <span class="tk-f">render</span>(tpl, ctx) {
+  <span class="tk-k">return</span> tpl.<span class="tk-f">replace</span>(<span class="tk-s">/\$\{([^}]+)\}/g</span>,
+    (_, expr) =&gt; <mark class="hl-bad"><span class="tk-f">eval</span>(<span class="tk-s">"ctx."</span> + expr)</mark>);
+}</code></pre>
+            <footer><b>CWE-94 · Code injection.</b> Any text inside <code>${…}</code> runs as code.</footer>
+          </article>
+          <article class="vs-pane good">
+            <header><span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>SecureVibe</span><span class="vs-badges"><em class="ok">✓ Functional</em><em class="ok">✓ Security</em></span></header>
+<pre><code><span class="tk-k">function</span> <span class="tk-f">render</span>(tpl, ctx) {
+  <span class="tk-k">return</span> tpl.<span class="tk-f">replace</span>(<mark class="hl-good"><span class="tk-s">/\$\{([\w.]+)\}/g</span></mark>,
+    (_, key) =&gt; <mark class="hl-good"><span class="tk-f">lookup</span>(ctx, key.<span class="tk-f">split</span>(<span class="tk-s">"."</span>))</mark>);
+}</code></pre>
+            <footer><b>Data, not code.</b> Only dotted keys are resolved; nothing is evaluated.</footer>
+          </article>
+        </div>
+        <p class="vs-attack"><span class="brief-label">ATTACK INPUT</span> <code>/user/${id; process.exit()}</code> <span class="vs-outcome"><em class="no">left: executes</em><em class="ok">right: stays literal text</em></span></p>
+      </div>
+      <div class="highlights">
+        <div><strong data-count="6.9">+6.9<span> pts</span></strong><b>BaxBench security</b><span class="delta">19.7% <i>→</i> 26.6%</span><small><i class="dot rl"></i>SecureVibe-rl</small></div>
+        <div><strong data-count="11.5">+11.5<span> pts</span></strong><b>Unseen CWEs · SusVibes</b><span class="delta">7.7% <i>→</i> 19.2%</span><small><i class="dot hg"></i>SecureVibe-hg</small></div>
+        <div><strong data-count="4.1">+4.1<span> pts</span></strong><b>SWE-bench Verified</b><span class="delta">60.9% <i>→</i> 65.0%</span><small><i class="dot base"></i>SecureVibe-base</small></div>
+      </div>
+      <p class="metric-note">Pass@1 gain over the Qwen baseline, in percentage points.</p>
+      <div class="tldr"><span class="tldr-label">TL;DR</span><p>SecureVibe teaches coding agents the security requirements users don’t state: SFT on a 1,648-example <strong>Security Suite</strong> (planning, coding, testing), then <strong>GRPO</strong> on execution rewards or <strong>hint-guided self-distillation</strong>. Security pass@1 rises on BaxBench and SusVibes, including unseen CWEs, and SWE-bench Verified improves too.</p></div>
+    </section>
+
+    <nav class="section-nav" aria-label="On this page"><a href="#overview">Overview</a><a href="#try">Try it</a><a href="#method">Method</a><a href="#cases">Case studies</a><a href="#results">Results</a><a href="#behaviors">Behaviors</a><a href="#resources">Resources</a></nav>
+
+    <section id="overview" class="section prose">
+      <p class="eyebrow">THE CHALLENGE</p><h2>Functionally correct ≠ secure</h2>
+      <p>Agents can pass every functional test and still ship a vulnerability, because users ask for a working feature, not a threat model.</p>
+      <aside class="takeaway"><strong>Practical insights</strong><p>(i) Diverse supervision across security planning, coding, and testing beats adding more coding trajectories.</p><p>(ii) Hints help most when the agent is too weak at security to learn from outcome feedback alone.</p></aside>
+    </section>
+
+    <section id="try" class="section band">
+      <p class="eyebrow">TRY IT YOURSELF</p><h2>A fix can work and still be unsafe</h2>
+      <p class="section-intro">All three policies serve normal filenames. Only one keeps every file inside the data root.</p>
+      <div class="path-lab">
+        <h3>Would this filename escape the root?</h3>
+        <p>Pick an example or type a filename, then select <strong>Check path</strong>.</p>
+        <p class="lab-scope">Illustrative lexical simulation; not a model rollout or filesystem test.</p>
+        <div id="path-presets" class="path-presets" role="group" aria-label="Example paths">
+          <button type="button" data-path="reports/weekly.csv">Normal file</button><button type="button" data-path="../../private.txt">Parent traversal</button><button type="button" data-path="../uploads-backup/notes.txt">Sibling directory</button><button type="button" data-path="reports/../notes.txt">Safe “..”</button><button type="button" data-path="/private.txt">Absolute path</button>
+        </div>
+        <form id="path-form"><label for="path-input">Filename under <code>/data/uploads</code></label><div class="path-input-row"><input id="path-input" name="filename" value="reports/weekly.csv" maxlength="500" spellcheck="false" autocomplete="off"><button type="submit">Check path →</button></div></form>
+        <p id="path-status" role="status">Ready to check. Select Check path to see the results.</p>
+        <div id="path-result" tabindex="-1" aria-label="Path check results" hidden><h4 id="path-result-title">Path check results</h4><p class="resolved-path">Normalized path: <code id="path-normalized"></code></p><div id="policy-results" class="policy-results"></div><p id="path-explanation"></p></div>
+      </div>
+    </section>
+
+    <section id="method" class="section">
+      <p class="eyebrow">THE RECIPE</p><h2>Learn the behaviors. Then reinforce them.</h2>
+      <figure class="figure-card"><a href="assets/securevibe-overview.png" aria-label="Open full-size SecureVibe training overview"><picture><source type="image/webp" srcset="assets/securevibe-overview-1200.webp 1200w, assets/securevibe-overview.webp 2400w" sizes="(max-width: 1040px) 100vw, 1000px"><img src="assets/securevibe-overview.png" alt="SecureVibe training overview: Security Suite supervised fine-tuning followed by outcome-based GRPO or hint-guided on-policy self-distillation." width="2400" height="863" loading="lazy" decoding="async"></picture></a></figure>
+      <div class="model-key" role="list" aria-label="Model names used on this page">
+        <div role="listitem"><i class="dot baseline"></i><b>Qwen baseline</b><span>Qwen3.5-35B-A3B, before SecureVibe training</span></div>
+        <div role="listitem"><i class="dot base"></i><b>SecureVibe-base</b><span>+ Security Suite SFT</span></div>
+        <div role="listitem"><i class="dot rl"></i><b>SecureVibe-rl</b><span>base + GRPO (outcome rewards)</span></div>
+        <div role="listitem"><i class="dot hg"></i><b>SecureVibe-hg</b><span>base + hint-guided OPSD</span></div>
+      </div>
+      <h3>1. Build a foundation with the Security Suite</h3>
+      <p><strong>1,648 training examples</strong> across four tasks. Select one to replay a recorded example.</p>
+      <div id="cases" class="suite-grid" role="group" aria-label="Explore Security Suite tasks">
+        <button type="button" class="suite-task" data-case-index="0" aria-expanded="true" aria-controls="case-details"><span class="task-number">01 / 505 examples</span><span class="suite-task-title">Functionality-focused coding</span><span class="suite-task-description">Implement a feature from its spec; security requirements stay implicit.</span><span class="task-action">View example ↓</span></button>
+        <button type="button" class="suite-task" data-case-index="1" aria-expanded="false" aria-controls="case-details"><span class="task-number">02 / 938 examples</span><span class="suite-task-title">Security coding</span><span class="suite-task-description">Code written with CWE/CVE guidance, which is then removed from the prompt.</span><span class="task-action">View example ↓</span></button>
+        <button type="button" class="suite-task" data-case-index="2" aria-expanded="false" aria-controls="case-details"><span class="task-number">03 / 95 examples</span><span class="suite-task-title">Security planning</span><span class="suite-task-description">Infer hidden security requirements before coding.</span><span class="task-action">View example ↓</span></button>
+        <button type="button" class="suite-task" data-case-index="3" aria-expanded="false" aria-controls="case-details"><span class="task-number">04 / 110 examples</span><span class="suite-task-title">Security testing</span><span class="suite-task-description">Write tests that separate vulnerable code from secure code.</span><span class="task-action">View example ↓</span></button>
+      </div>
+      <div id="case-details" class="suite-evidence">
+        <div class="evidence-toolbar"><p class="eyebrow">FOLLOW THE EVIDENCE</p><button id="case-close" type="button">Collapse example ↑</button></div>
+      <div id="case-loader" role="status">Loading case studies…</div>
+      <button id="case-retry" type="button" hidden>Retry loading cases</button>
+      <div id="case-explorer" tabindex="0" aria-label="Case study replay. Use left and right arrow keys to step through selected moments." hidden>
+        <div class="case-frame">
+          <div class="case-heading"><div><p id="case-tags" class="eyebrow"></p><h3 id="case-title"></h3></div><button id="case-link" type="button">Copy case link</button></div>
+          <div class="case-brief"><div><span class="brief-label">THE USER’S REQUEST</span><p id="case-task"></p></div><div><span id="case-requirement-label" class="brief-label"></span><p id="case-hidden"></p></div></div>
+          <div id="case-timeline" class="case-timeline" role="group" aria-label="Selected moments"></div>
+          <div class="replay-controls"><button id="case-prev" type="button" aria-label="Previous moment">←</button><button id="case-play" type="button" aria-label="Play selected moments">Play</button><button id="case-next" type="button" aria-label="Next moment">→</button><label for="case-position" class="sr-only">Selected moment</label><input id="case-position" type="range" min="1" max="6" value="1"><span id="case-counter"></span></div>
+          <div class="case-moment" aria-live="polite">
+            <p id="moment-stage" class="eyebrow"></p><h4 id="moment-title"></h4><p id="moment-summary"></p>
+            <div class="evidence-header"><span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>RECORDED EVIDENCE · EXCERPT</span><span id="moment-refs"></span><button id="evidence-copy" type="button" aria-label="Copy evidence excerpt">Copy</button></div>
+            <pre class="evidence-block"><code id="moment-evidence"></code></pre>
+            <p id="moment-note" class="evidence-note"></p>
+          </div>
+          <details class="case-provenance"><summary>Source record</summary><p><a id="case-source" href="https://huggingface.co/datasets/dqwang122/SafeVibe">Public source dataset ↗</a> · <span id="case-row"></span></p><code id="case-instance"></code></details>
+          <p id="case-status" role="status"></p>
+        </div>
+      </div>
+      <noscript><p>Enable JavaScript for the replay and input demo. The <a href="https://huggingface.co/datasets/dqwang122/SafeVibe">public training dataset</a> contains the source demonstrations.</p></noscript>
+      </div>
+      <h3>2. Improve with outcomes or hints</h3>
+      <div class="methods">
+        <article><span class="tag"><i class="dot rl"></i>SecureVibe-rl · GRPO</span><h4>Learn from execution</h4><p>GRPO with rewards for a valid patch, functional tests, and security tests.</p><a href="https://github.com/MSR-Orchard/SecureVibe/tree/main/training/slime_rl">GRPO training guide <span aria-hidden="true">→</span></a></article>
+        <article><span class="tag purple"><i class="dot hg"></i>SecureVibe-hg · OPSD</span><h4>Learn from a hinted teacher</h4><p>On-policy self-distillation from a teacher that sees security hints. No hints at inference.</p><a href="https://github.com/MSR-Orchard/SecureVibe/tree/main/training/slime_opd">OPSD training guide <span aria-hidden="true">→</span></a></article>
+      </div>
+
+      <div id="teacher-hints" class="hint-panel">
+        <div class="hint-panel-head"><div><p class="eyebrow purple">INSIDE SECUREVIBE-HG</p><h4>Same task. Extra guidance for the teacher only.</h4></div>
+          <div id="hint-tabs" class="seg purple-seg" role="group" aria-label="Hint examples"><button type="button" data-hint="0" aria-pressed="true">SQL injection · CSV reports</button><button type="button" data-hint="1" aria-pressed="false">Path traversal · File helpers</button></div></div>
+        <div class="hint-pair" data-hint-panel="0">
+          <div class="hint-side student"><span class="brief-label">STUDENT + TEACHER SEE</span><p>Generate a CSV report from ledger entries using a client-supplied filter and sort order.</p></div>
+          <div class="hint-plus" aria-hidden="true">+</div>
+          <div class="hint-side teacher"><span class="brief-label">ONLY THE TEACHER ALSO SEES</span><p>Treat filter values as data: bind them as SQL parameters. Choose column names and sort directions from an allowlist rather than inserting arbitrary user text into the query.</p></div>
+        </div>
+        <div class="hint-pair" data-hint-panel="1" hidden>
+          <div class="hint-side student"><span class="brief-label">STUDENT + TEACHER SEE</span><p>Resolve a requested filename under the configured data directory.</p></div>
+          <div class="hint-plus" aria-hidden="true">+</div>
+          <div class="hint-side teacher"><span class="brief-label">ONLY THE TEACHER ALSO SEES</span><p>Joining paths does not enforce containment. Validate the resolved destination against the allowed directory boundary; a matching text prefix can include sibling directories. Account for symlinks when opening files.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="results" class="section">
+      <p class="eyebrow">GENERALIZATION</p><h2>Better security. Broader coding capability.</h2>
+      <p>Qwen3.5-35B-A3B baseline vs. the three SecureVibe variants, all run with mini-swe-agent.</p>
+      <div class="results-panel">
+        <div class="chart-controls">
+          <div class="control-group"><span class="control-label" id="benchmark-label">Evaluation</span><div id="benchmark" class="seg" role="group" aria-labelledby="benchmark-label"><button type="button" data-value="unseen" aria-pressed="true">SusVibes <small>unseen CWE · 78</small></button><button type="button" data-value="baxbenchUnseen" aria-pressed="false">BaxBench <small>unseen CWE · 140</small></button><button type="button" data-value="susvibes" aria-pressed="false">SusVibes <small>186</small></button><button type="button" data-value="baxbench" aria-pressed="false">BaxBench <small>392</small></button><button type="button" data-value="swe" aria-pressed="false">SWE-bench Verified <small>500</small></button></div></div>
+          <div class="control-group"><span class="control-label" id="metric-label">Metric</span><div id="metric" class="seg toggle" role="group" aria-labelledby="metric-label"><button type="button" data-value="security" aria-pressed="true">Security pass@1</button><button type="button" data-value="functional" aria-pressed="false">Functional pass@1</button></div></div>
+        </div>
+        <div id="result-chart" class="result-chart" role="img" aria-label="SusVibes unseen-CWE subset security pass@1: Qwen baseline 7.69%; SecureVibe-base 12.82%; SecureVibe-rl 15.38%; SecureVibe-hg 19.23%.">
+          <div class="chart-row"><span><i class="dot baseline"></i>Qwen baseline</span><div class="bar-track"><i class="base-mark" aria-hidden="true"></i><div class="bar baseline" style="width:7.69%"></div></div><strong>7.69%</strong></div>
+          <div class="chart-row"><span><i class="dot base"></i>SecureVibe-base</span><div class="bar-track"><i class="base-mark" aria-hidden="true"></i><div class="bar base" style="width:12.82%"></div></div><strong>12.82%</strong></div>
+          <div class="chart-row"><span><i class="dot rl"></i>SecureVibe-rl</span><div class="bar-track"><i class="base-mark" aria-hidden="true"></i><div class="bar rl" style="width:15.38%"></div></div><strong>15.38%</strong></div>
+          <div class="chart-row"><span><i class="dot hg"></i>SecureVibe-hg</span><div class="bar-track"><i class="base-mark" aria-hidden="true"></i><div class="bar hg" style="width:19.23%"></div></div><strong>19.23%</strong></div>
+          <div class="chart-axis" aria-hidden="true"><span>0%</span><span>10%</span><span>20%</span></div>
+        </div>
+        <p id="result-summary" class="result-summary" aria-live="polite">SecureVibe-hg improves SusVibes unseen-CWE subset security pass@1 from 7.69% to 19.23% (+11.54 points).</p>
+        <noscript><p class="chart-note">Enable JavaScript to switch benchmarks and metrics. The chart above shows SusVibes unseen-CWE subset security pass@1.</p></noscript>
+      </div>
+      <p class="metric-definition"><strong>Functional:</strong> passes functional tests. <strong>Security:</strong> passes functional and security tests. SWE-bench Verified has no security metric.</p>
+    </section>
+
+    <section id="behaviors" class="section">
+      <p class="eyebrow">BEHIND THE GAINS</p><h2>What changes in the agent’s behavior?</h2>
+      <h3>Security is a process, not just an output.</h3>
+      <p>The Security Suite produces more of all three security behaviors than either alternative SFT recipe.</p>
+      <div class="viz-card">
+        <div class="viz-legend" aria-hidden="true"><span><i class="sw only"></i>Security Only</span><span><i class="sw mix"></i>Simple Mixture</span><span><i class="sw suite"></i>Security Suite <small>(SecureVibe-base)</small></span></div>
+        <div class="beh-chart" role="img" aria-label="Percentage of trajectories exhibiting each security behavior. Planning, PatchEval-Gen: Security Only 9.5%, Simple Mixture 9.5%, Security Suite 21.4%; Planning, AutoBax: Security Only 2.5%, Simple Mixture 2.5%, Security Suite 3.8%; Coding, PatchEval-Gen: Security Only 61.9%, Simple Mixture 64.3%, Security Suite 69.0%; Coding, AutoBax: Security Only 81.2%, Simple Mixture 80.0%, Security Suite 90.0%; Testing, PatchEval-Gen: Security Only 31.0%, Simple Mixture 33.3%, Security Suite 45.2%; Testing, AutoBax: Security Only 61.2%, Simple Mixture 52.5%, Security Suite 77.5%."><div class="beh-group"><h4>Planning</h4><div class="beh-bench"><span class="beh-bench-name">PatchEval-Gen</span><div class="hbar"><span class="hbar-track"><i class="only" style="width:9.5%"></i></span><b>9.5</b></div><div class="hbar"><span class="hbar-track"><i class="mix" style="width:9.5%"></i></span><b>9.5</b></div><div class="hbar"><span class="hbar-track"><i class="suite" style="width:21.4%"></i></span><b>21.4</b></div></div><div class="beh-bench"><span class="beh-bench-name">AutoBax</span><div class="hbar"><span class="hbar-track"><i class="only" style="width:2.5%"></i></span><b>2.5</b></div><div class="hbar"><span class="hbar-track"><i class="mix" style="width:2.5%"></i></span><b>2.5</b></div><div class="hbar"><span class="hbar-track"><i class="suite" style="width:3.8%"></i></span><b>3.8</b></div></div></div><div class="beh-group"><h4>Coding</h4><div class="beh-bench"><span class="beh-bench-name">PatchEval-Gen</span><div class="hbar"><span class="hbar-track"><i class="only" style="width:61.9%"></i></span><b>61.9</b></div><div class="hbar"><span class="hbar-track"><i class="mix" style="width:64.3%"></i></span><b>64.3</b></div><div class="hbar"><span class="hbar-track"><i class="suite" style="width:69.0%"></i></span><b>69.0</b></div></div><div class="beh-bench"><span class="beh-bench-name">AutoBax</span><div class="hbar"><span class="hbar-track"><i class="only" style="width:81.2%"></i></span><b>81.2</b></div><div class="hbar"><span class="hbar-track"><i class="mix" style="width:80.0%"></i></span><b>80.0</b></div><div class="hbar"><span class="hbar-track"><i class="suite" style="width:90.0%"></i></span><b>90.0</b></div></div></div><div class="beh-group"><h4>Testing</h4><div class="beh-bench"><span class="beh-bench-name">PatchEval-Gen</span><div class="hbar"><span class="hbar-track"><i class="only" style="width:31.0%"></i></span><b>31.0</b></div><div class="hbar"><span class="hbar-track"><i class="mix" style="width:33.3%"></i></span><b>33.3</b></div><div class="hbar"><span class="hbar-track"><i class="suite" style="width:45.2%"></i></span><b>45.2</b></div></div><div class="beh-bench"><span class="beh-bench-name">AutoBax</span><div class="hbar"><span class="hbar-track"><i class="only" style="width:61.2%"></i></span><b>61.2</b></div><div class="hbar"><span class="hbar-track"><i class="mix" style="width:52.5%"></i></span><b>52.5</b></div><div class="hbar"><span class="hbar-track"><i class="suite" style="width:77.5%"></i></span><b>77.5</b></div></div></div></div>
+        <p class="viz-caption">Share of trajectories showing each behavior, by SFT recipe.</p>
+      </div>
+      <h3>Hints help when successful outcomes are scarce.</h3>
+      <p>SecureVibe-hg raises all three behaviors on both benchmarks; SecureVibe-rl’s largest gain is planning on AutoBax.</p>
+      <div class="viz-card">
+        <div class="viz-legend" aria-hidden="true"><span><i class="mk start"></i>Security Suite SFT <small>(SecureVibe-base)</small></span><span><i class="mk rl"></i>+ GRPO <small>(SecureVibe-rl)</small></span><span><i class="mk hg"></i>+ OPSD <small>(SecureVibe-hg)</small></span></div>
+        <div class="db-chart" role="img" aria-label="Security behavior frequency before and after post-training. PatchEval-Gen (n=45) Planning: Security Suite 17.8%, GRPO 20.0%, OPSD 28.9%; PatchEval-Gen (n=45) Coding: Security Suite 62.2%, GRPO 66.7%, OPSD 71.1%; PatchEval-Gen (n=45) Testing: Security Suite 40.0%, GRPO 37.8%, OPSD 53.3%; AutoBax (n=78) Planning: Security Suite 1.3%, GRPO 9.0%, OPSD 5.1%; AutoBax (n=78) Coding: Security Suite 88.5%, GRPO 84.6%, OPSD 91.0%; AutoBax (n=78) Testing: Security Suite 71.8%, GRPO 67.9%, OPSD 78.2%."><div class="db-panel"><h4>PatchEval-Gen (n=45)</h4><div class="db-row"><span class="db-beh">Planning</span><div class="db-line rl"><span class="db-name">rl</span><span class="db-track"><i class="db-seg" style="left:17.8%;width:2.2%"></i><i class="db-start" style="left:17.8%"></i><i class="db-end" style="left:20.0%"></i></span><span class="db-val">17.8 → 20.0 <b class="up">+2.2</b></span></div><div class="db-line hg"><span class="db-name">hg</span><span class="db-track"><i class="db-seg" style="left:17.8%;width:11.1%"></i><i class="db-start" style="left:17.8%"></i><i class="db-end" style="left:28.9%"></i></span><span class="db-val">17.8 → 28.9 <b class="up">+11.1</b></span></div></div><div class="db-row"><span class="db-beh">Coding</span><div class="db-line rl"><span class="db-name">rl</span><span class="db-track"><i class="db-seg" style="left:62.2%;width:4.5%"></i><i class="db-start" style="left:62.2%"></i><i class="db-end" style="left:66.7%"></i></span><span class="db-val">62.2 → 66.7 <b class="up">+4.4</b></span></div><div class="db-line hg"><span class="db-name">hg</span><span class="db-track"><i class="db-seg" style="left:62.2%;width:8.9%"></i><i class="db-start" style="left:62.2%"></i><i class="db-end" style="left:71.1%"></i></span><span class="db-val">62.2 → 71.1 <b class="up">+8.9</b></span></div></div><div class="db-row"><span class="db-beh">Testing</span><div class="db-line rl"><span class="db-name">rl</span><span class="db-track"><i class="db-seg" style="left:37.8%;width:2.2%"></i><i class="db-start" style="left:40.0%"></i><i class="db-end" style="left:37.8%"></i></span><span class="db-val">40.0 → 37.8 <b class="down">−2.2</b></span></div><div class="db-line hg"><span class="db-name">hg</span><span class="db-track"><i class="db-seg" style="left:40.0%;width:13.3%"></i><i class="db-start" style="left:40.0%"></i><i class="db-end" style="left:53.3%"></i></span><span class="db-val">40.0 → 53.3 <b class="up">+13.3</b></span></div></div><div class="db-axis" aria-hidden="true"><span style="left:0%">0</span><span style="left:25%">25</span><span style="left:50%">50</span><span style="left:75%">75</span><span style="left:100%">100%</span></div></div><div class="db-panel"><h4>AutoBax (n=78)</h4><div class="db-row"><span class="db-beh">Planning</span><div class="db-line rl"><span class="db-name">rl</span><span class="db-track"><i class="db-seg" style="left:1.3%;width:7.7%"></i><i class="db-start" style="left:1.3%"></i><i class="db-end" style="left:9.0%"></i></span><span class="db-val">1.3 → 9.0 <b class="up">+7.7</b></span></div><div class="db-line hg"><span class="db-name">hg</span><span class="db-track"><i class="db-seg" style="left:1.3%;width:3.8%"></i><i class="db-start" style="left:1.3%"></i><i class="db-end" style="left:5.1%"></i></span><span class="db-val">1.3 → 5.1 <b class="up">+3.8</b></span></div></div><div class="db-row"><span class="db-beh">Coding</span><div class="db-line rl"><span class="db-name">rl</span><span class="db-track"><i class="db-seg" style="left:84.6%;width:3.9%"></i><i class="db-start" style="left:88.5%"></i><i class="db-end" style="left:84.6%"></i></span><span class="db-val">88.5 → 84.6 <b class="down">−3.8</b></span></div><div class="db-line hg"><span class="db-name">hg</span><span class="db-track"><i class="db-seg" style="left:88.5%;width:2.5%"></i><i class="db-start" style="left:88.5%"></i><i class="db-end" style="left:91.0%"></i></span><span class="db-val">88.5 → 91.0 <b class="up">+2.6</b></span></div></div><div class="db-row"><span class="db-beh">Testing</span><div class="db-line rl"><span class="db-name">rl</span><span class="db-track"><i class="db-seg" style="left:67.9%;width:3.9%"></i><i class="db-start" style="left:71.8%"></i><i class="db-end" style="left:67.9%"></i></span><span class="db-val">71.8 → 67.9 <b class="down">−3.8</b></span></div><div class="db-line hg"><span class="db-name">hg</span><span class="db-track"><i class="db-seg" style="left:71.8%;width:6.4%"></i><i class="db-start" style="left:71.8%"></i><i class="db-end" style="left:78.2%"></i></span><span class="db-val">71.8 → 78.2 <b class="up">+6.4</b></span></div></div><div class="db-axis" aria-hidden="true"><span style="left:0%">0</span><span style="left:25%">25</span><span style="left:50%">50</span><span style="left:75%">75</span><span style="left:100%">100%</span></div></div></div>
+        <p class="viz-caption">Behavior frequency (%), not pass rate.</p>
+      </div>
+    </section>
+
+    <section id="resources" class="section">
+      <p class="eyebrow">BUILD ON SECUREVIBE</p><h2>From training to evaluation</h2>
+      <div class="resources-grid">
+        <a href="https://github.com/MSR-Orchard/SecureVibe"><span class="resource-type">TRAINING</span><h3>SecureVibe <span aria-hidden="true">↗</span></h3><p>SFT, reinforcement learning, and hint-guided distillation recipes.</p></a>
+        <a href="https://github.com/MSR-Orchard/SecureVibeEval"><span class="resource-type">EVALUATION</span><h3>SecureVibeEval <span aria-hidden="true">↗</span></h3><p>Benchmark execution, agent harnesses, and functional and security grading.</p></a>
+        <a href="https://huggingface.co/datasets/dqwang122/SafeVibe"><span class="resource-type">DATA</span><h3>Datasets <span aria-hidden="true">↗</span></h3><p>Training inputs and benchmark resources with source mappings and checksums.</p></a>
+      </div>
+    </section>
+
+    <section id="citation" class="section citation">
+      <h2>Citation</h2>
+      <div class="citation-box"><button id="copy-citation" type="button">Copy BibTeX</button><pre><code id="bibtex">@misc{wang2026securevibe,
+  title={SecureVibe: Making Vibe Coding More Secure},
+  author={Danqing Wang and Baolin Peng and Zhepei Wei and
+          Isadora White and Wenlin Yao and Hao Cheng and
+          Qianhui Wu and Minseon Kim and Xingdi Yuan and
+          Lei Li and Jianfeng Gao},
+  year={2026},
+  eprint={2609.38606},
+  archivePrefix={arXiv},
+  primaryClass={cs.CR},
+  url={https://arxiv.org/abs/2609.38606}
+}</code></pre></div><p id="copy-status" role="status"></p>
+    </section>
+  </main>
+  <footer>
+    <span>Questions? <a href="https://github.com/MSR-Orchard/SecureVibe/issues">Open a GitHub issue</a>.</span>
+    <span>Part of <a href="../">Orchard-Agentic</a> · <a href="https://github.com/microsoft/Orchard-Agentic/blob/main/LICENSE">MIT License</a> · Updated Oct 1, 2026 · <a href="#top">Top ↑</a></span>
+  </footer>
+</body>
+</html>
