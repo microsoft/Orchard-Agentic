@@ -10,6 +10,7 @@ site/
 ├── index.html              # Orchard-Agentic collection landing page
 ├── orchard.html            # Orchard paper and project details
 ├── autoenvscaling/         # AutoEnvScaling project page (built site; see its own index.html)
+├── securevibe/             # SecureVibe project page (see securevibe/README.md)
 ├── .nojekyll               # let GitHub Pages serve the assets/ folder as-is
 └── assets/
     ├── css/style.css
