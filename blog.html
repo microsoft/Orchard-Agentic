@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <script>
+    if (!new URLSearchParams(window.location.search).has("clawpilotTheme")) {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  </script>
+  <title>Blog — Orchard-Agentic</title>
+  <meta name="description" content="Posts and research notes from the Orchard-Agentic team." />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/hub.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="index.html#updates">News</a>
+        <a href="blog.html" aria-current="page">Blog</a>
+        <a href="index.html#projects">Projects</a>
+        <a href="people.html">People</a>
+        <a href="index.html#infrastructure">Infrastructure</a>
+        <a href="index.html#resources">Resources</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="page-intro">
+      <div class="container">
+        <p class="intro-label">Orchard-Agentic</p>
+        <h1>Blog</h1>
+        <p class="intro-copy">Research notes, release write-ups, and lessons from building agentic models.</p>
+      </div>
+    </section>
+
+    <section class="section" id="posts">
+      <div class="container">
+        <div class="section-heading">
+          <h2>Posts</h2>
+        </div>
+        <p class="placeholder-note">Placeholder entries — replace with real posts. Newest first.</p>
+        <!-- To add a post, copy one <article class="project-entry"> block. -->
+        <div class="project-list">
+          <article class="project-entry">
+            <div>
+              <span class="project-kind">Research</span>
+              <time class="post-date" datetime="2026-10-01">Oct 1, 2026</time>
+            </div>
+            <div class="project-body">
+              <h3>Post title</h3>
+              <p>One- or two-sentence summary of the post.</p>
+              <p class="project-links"><a href="#">Read post</a></p>
+            </div>
+          </article>
+          <article class="project-entry">
+            <div>
+              <span class="project-kind">Release</span>
+              <time class="post-date" datetime="2026-09-15">Sep 15, 2026</time>
+            </div>
+            <div class="project-body">
+              <h3>Post title</h3>
+              <p>One- or two-sentence summary of the post.</p>
+              <p class="project-links"><a href="#">Read post</a></p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-row">
+      <span>Orchard-Agentic · Open agentic modeling research</span>
+      <span><a href="orchard.html">Orchard project</a> · <a href="https://github.com/microsoft/Orchard-Agentic">GitHub</a></span>
+    </div>
+  </footer>
+</body>
+</html>
