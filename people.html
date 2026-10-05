@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <script>
+    if (!new URLSearchParams(window.location.search).has("clawpilotTheme")) {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  </script>
+  <title>People — Orchard-Agentic</title>
+  <meta name="description" content="The researchers and engineers behind Orchard-Agentic." />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/hub.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="index.html#updates">News</a>
+        <a href="blog.html">Blog</a>
+        <a href="index.html#projects">Projects</a>
+        <a href="people.html" aria-current="page">People</a>
+        <a href="index.html#infrastructure">Infrastructure</a>
+        <a href="index.html#resources">Resources</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="page-intro">
+      <div class="container">
+        <p class="intro-label">Orchard-Agentic</p>
+        <h1>People</h1>
+        <p class="intro-copy">The researchers and engineers building Orchard-Agentic.</p>
+      </div>
+    </section>
+
+    <section class="section" id="team">
+      <div class="container">
+        <div class="section-heading">
+          <h2>Team</h2>
+        </div>
+        <!-- To add a person, copy one <article class="person"> block. -->
+        <div class="people-grid">
+          <article class="person">
+            <div class="person-avatar" aria-hidden="true">BP</div>
+            <h3>Baolin Peng</h3>
+            <p>Principal Researcher and Research Manager · Microsoft Research</p>
+            <p>LLM-powered agents, reasoning and planning, and reinforcement learning for LLMs.</p>
+            <a href="https://pengbaolin.github.io/" target="_blank" rel="noopener">Homepage</a>
+          </article>
+          <article class="person">
+            <div class="person-avatar" aria-hidden="true">QW</div>
+            <h3>Qianhui Wu</h3>
+            <p>Senior Researcher · Microsoft Research</p>
+            <p>Agentic AI for computer use, multimodal reasoning, and efficient LLMs.</p>
+            <a href="https://qianhuiwu.github.io/" target="_blank" rel="noopener">Homepage</a>
+          </article>
+          <article class="person">
+            <div class="person-avatar" aria-hidden="true">WY</div>
+            <h3>Wenlin Yao</h3>
+            <p>Principal Researcher · Microsoft Research</p>
+            <p>End-to-end reinforcement learning for long-horizon, tool-using agents.</p>
+            <a href="https://wenlinyao.github.io/" target="_blank" rel="noopener">Homepage</a>
+          </article>
+          <article class="person">
+            <div class="person-avatar" aria-hidden="true">HC</div>
+            <h3>Hao Cheng</h3>
+            <p>Principal Researcher · Microsoft Research</p>
+            <p>Deep learning and natural language processing for language models and agents.</p>
+            <a href="https://sites.google.com/site/hcheng2site/Home" target="_blank" rel="noopener">Homepage</a>
+          </article>
+          <article class="person">
+            <div class="person-avatar" aria-hidden="true">JG</div>
+            <h3>Jianfeng Gao</h3>
+            <p>Technical Fellow &amp; Corporate Vice President · Microsoft</p>
+            <p>Deep learning, NLP, and multimodal intelligence.</p>
+            <a href="https://www.microsoft.com/en-us/research/people/jfgao/" target="_blank" rel="noopener">Homepage</a>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-row">
+      <span>Orchard-Agentic · Open agentic modeling research</span>
+      <span><a href="orchard.html">Orchard project</a> · <a href="https://github.com/microsoft/Orchard-Agentic">GitHub</a></span>
+    </div>
+  </footer>
+</body>
+</html>
