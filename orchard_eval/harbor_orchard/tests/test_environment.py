@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 
 harbor = pytest.importorskip("harbor", reason="Harbor is not installed")
@@ -31,8 +34,11 @@ from harbor_orchard.environment import (  # noqa: E402
     ConfigurationError,
     OrchardEnvironment,
     SandboxGone,
+    SandboxInfraError,
 )
+from harbor_orchard.plan import StageState  # noqa: E402
 from harbor_orchard.settings import OrchardSettings  # noqa: E402
+from orchard_evalkit.jobs import ExecDispatchError  # noqa: E402
 
 
 def test_every_abstract_method_is_implemented():
@@ -651,6 +657,7 @@ class TestSessionClose:
         env = _Env.__new__(_Env)
         env._settings = OrchardSettings(base_url="http://o")
         env._instance = None
+        env._jobs = None
         env._client = None
         env._owns_client = False
         env._endpoint = endpoint
@@ -771,3 +778,132 @@ class TestPreferIPv4IsOptional:
         """An image with no awk is still a usable environment for most tasks."""
         instance = self._Recording(error=RuntimeError("no such file"))
         await self._env(instance)._prefer_ipv4()
+
+
+class TestInfraFailuresEndTheTrial:
+    """A sandbox that failed under a trial is never used again.
+
+    Commands used to go through the SDK's ``exec``, which answered a dropped
+    ``POST /exec`` by sending the command again — a second agent CLI on the
+    tree the first had already edited, in 297 of 613 trials of one SWE-bench
+    Pro V2 run. The job client raises instead, and these pin what happens next:
+    one exception type Harbor can retry on (``--retry-include
+    SandboxInfraError``, which reruns the trial in a brand-new pod), and no
+    further command sent to the failed one.
+    """
+
+    class _Jobs:
+        """Stands in for :class:`orchard_evalkit.jobs.JobClient`."""
+
+        def __init__(self, *outcomes):
+            self._outcomes = list(outcomes)
+            self.commands = []
+
+        async def run(self, sandbox_id, command, **kwargs):
+            self.commands.append(command)
+            outcome = self._outcomes.pop(0)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+
+    @staticmethod
+    def _job(exit_code, error=None):
+        return SimpleNamespace(exit_code=exit_code, stdout="", stderr="", error=error)
+
+    @staticmethod
+    def _env(jobs=None):
+        env = _Env.__new__(_Env)
+        env._settings = OrchardSettings(base_url="http://o", liveness_interval=0)
+        env._instance = SimpleNamespace(sandbox_id="600967f6")
+        env._jobs = jobs or TestInfraFailuresEndTheTrial._Jobs()
+        env._client = _FakeClient()
+        env._state = StageState()
+        env._endpoint = None
+        env._deadline_resolved = True
+        env._deadline_sec = None
+        env._failure = None
+        env._stop_tasks = set()
+        env.default_user = None
+        env.task_env_config = SimpleNamespace(workdir="/app")
+        env._merge_env = lambda overlay: None
+        return env
+
+    def test_the_name_is_the_one_harbor_retries_on(self):
+        # Harbor matches --retry-include against type(exc).__name__.
+        assert SandboxInfraError.__name__ == "SandboxInfraError"
+        assert issubclass(SandboxGone, SandboxInfraError)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ExecDispatchError("POST failed after it was sent"),
+            aiohttp.ServerDisconnectedError(),
+            aiohttp.ClientResponseError(MagicMock(), (), status=502),
+            TimeoutError("Job j1 did not complete within 3600s"),
+        ],
+        ids=["dispatch", "disconnect", "502", "client-deadline"],
+    )
+    async def test_a_transport_failure_becomes_an_infra_error(self, error):
+        async def call():
+            raise error
+
+        with pytest.raises(SandboxInfraError, match="600967f6"):
+            await self._env()._guard(call())
+
+    @pytest.mark.asyncio
+    async def test_a_client_error_is_left_alone(self):
+        # A 400 fails the same way in any pod; retrying it costs a rollout.
+        async def call():
+            raise aiohttp.ClientResponseError(MagicMock(), (), status=400)
+
+        with pytest.raises(aiohttp.ClientResponseError):
+            await self._env()._guard(call())
+
+    @pytest.mark.asyncio
+    async def test_a_failing_command_is_a_result(self):
+        env = self._env(self._Jobs(self._job(1)))
+        result = await env.exec("pytest")
+        assert result.return_code == 1
+        assert env._failure is None
+
+    @pytest.mark.asyncio
+    async def test_a_command_that_never_reached_the_pod_is_an_infra_error(self):
+        env = self._env(self._Jobs(self._job(None, "No pod IP available")))
+        with pytest.raises(SandboxInfraError, match="No pod IP available"):
+            await env.exec("mini-swe-agent --task ...")
+
+    @pytest.mark.asyncio
+    async def test_a_command_timeout_is_still_reported_as_one(self):
+        env = self._env(
+            self._Jobs(self._job(None, "Execution timed out after 3600s"))
+        )
+        result = await env.exec("sleep 9999")
+        assert result.return_code == -1
+        assert env._failure is None
+
+    @pytest.mark.asyncio
+    async def test_nothing_more_is_sent_to_a_pod_that_failed(self):
+        # Harbor still captures the patch and artifacts from a failed trial;
+        # in this pod each would queue behind the orphaned agent.
+        jobs = self._Jobs(ExecDispatchError("dropped"), self._job(0))
+        env = self._env(jobs)
+        with pytest.raises(SandboxInfraError):
+            await env.exec("mini-swe-agent --task ...")
+        with pytest.raises(SandboxInfraError, match="earlier command already failed"):
+            await env.exec("git diff --cached > /logs/agent/model.patch")
+        assert len(jobs.commands) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_pod_that_cannot_be_created_is_an_infra_error(self):
+        env = self._env()
+        env._start = AsyncMock(side_effect=aiohttp.ClientConnectionError("refused"))
+        with pytest.raises(SandboxInfraError, match="ClientConnectionError"):
+            await env.start(force_build=False)
+
+    @pytest.mark.asyncio
+    async def test_a_task_the_provider_cannot_run_is_not_retried(self):
+        env = self._env()
+        env._start = AsyncMock(side_effect=ConfigurationError("needs compose"))
+        with pytest.raises(ConfigurationError):
+            await env.start(force_build=False)

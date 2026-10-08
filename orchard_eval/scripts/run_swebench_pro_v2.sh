@@ -281,7 +281,11 @@ TASK_ARGS=()
 if [[ "${HARD51:-0}" == "1" ]]; then
     HARD51_FILE="${PRO_V2_DIR}/v2/hard51_ids.txt"
     [[ -f "${HARD51_FILE}" ]] || { echo "No ${HARD51_FILE}" >&2; exit 1; }
-    TASK_ARGS+=(--task-file "${HARD51_FILE}")
+    # A directory of 51 symlinks rather than a --task-file: Harbor's name
+    # filter resolves every task path once per pattern, 642 x 51 lookups that
+    # take 11-12 minutes on NFS. See stage_task_subset.sh.
+    bash "${SCRIPT_DIR}/stage_task_subset.sh" "${TASKS_DIR}" "${HARD51_FILE}" "${PRO_V2_DIR}/v2/hard51/tasks"
+    TASKS_DIR="${PRO_V2_DIR}/v2/hard51/tasks"
 fi
 [[ -n "${TASK_FILE:-}" ]] && TASK_ARGS+=(--task-file "${TASK_FILE}")
 [[ -n "${EXCLUDE_TASK_FILE:-}" ]] && TASK_ARGS+=(--exclude-task-file "${EXCLUDE_TASK_FILE}")

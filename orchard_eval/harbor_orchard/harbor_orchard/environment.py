@@ -64,6 +64,7 @@ from harbor.environments.definition import (
     should_use_prebuilt_docker_image,
 )
 from harbor.models.task.config import NetworkMode, NetworkPolicy
+from orchard_evalkit.jobs import JobClient, JobTransportError
 
 from harbor_orchard import progress, transfer
 from harbor_orchard.agent_config import (
@@ -110,8 +111,42 @@ LIVENESS_PROBE_TIMEOUT = 30
 TIMEOUT_EXIT_CODE = 124
 
 
-class SandboxGone(RuntimeError):
+class SandboxInfraError(RuntimeError):
+    """The sandbox or the orchestrator failed under this trial.
+
+    Raised instead of returning whatever the failed call left behind, because
+    nothing about such a trial measures the model, and continuing in the same
+    pod is how a second agent came to start on a tree the first one had already
+    edited. The class name is what ``orchard-eval harbor`` passes to Harbor's
+    ``--retry-include``: Harbor then discards the trial and runs it again as a
+    new one — a new pod, a clean checkout, and a full agent budget.
+    """
+
+
+class SandboxGone(SandboxInfraError):
     """The pod backing this environment no longer exists."""
+
+
+#: Statuses the orchestrator returns for a failure of its own rather than of
+#: the request: overloaded, timed out, or unable to reach the pod.
+INFRA_STATUSES = frozenset({408, 429})
+
+
+def is_infra_failure(exc: BaseException) -> bool:
+    """True when the orchestrator or the pod failed, not the command or the task.
+
+    A command that exits non-zero is a result and never matches. A 4xx is the
+    caller's mistake and fails identically on a new pod, so it does not match
+    either; a 404 is handled before this by the callers, as a reaped pod.
+    """
+    status = getattr(exc, "status", None)
+    if isinstance(status, int):
+        return status >= 500 or status in INFRA_STATUSES
+    if isinstance(exc, JobTransportError | ConnectionError | TimeoutError):
+        return True
+    # aiohttp's connection errors, matched by name so this module does not need
+    # to import the transport the SDK happens to be built on.
+    return any(base.__name__ == "ClientError" for base in type(exc).__mro__)
 
 
 #: Seconds for the pre-collect commit. Generous because ``git add -A`` on a
@@ -177,6 +212,11 @@ class OrchardEnvironment(BaseEnvironment):
         #: Live :meth:`_stop_agent_cli` tasks, held so the loop does not drop
         #: them before they run.
         self._stop_tasks: set[asyncio.Task] = set()
+        #: The first infrastructure failure of an exec in this pod. Once set,
+        #: no further command is sent here: see :meth:`exec`.
+        self._failure: SandboxInfraError | None = None
+        #: Runs every command Harbor sends; see :mod:`orchard_evalkit.jobs`.
+        self._jobs: JobClient | None = None
 
     # ------------------------------------------------------------------
     # Declarations
@@ -251,6 +291,19 @@ class OrchardEnvironment(BaseEnvironment):
 
     @override
     async def start(self, force_build: bool) -> None:
+        try:
+            await self._start(force_build)
+        except (ConfigurationError, BuildError, SandboxInfraError):
+            raise
+        except Exception as exc:
+            # A pod that could not be created or set up is the cluster's
+            # failure, and a 404 this early means the sandbox vanished before
+            # the trial began — neither is the task's.
+            if getattr(exc, "status", None) == 404 or is_infra_failure(exc):
+                raise self._infra_error(exc) from exc
+            raise
+
+    async def _start(self, force_build: bool) -> None:
         self._pin_endpoint()
         await self._connect()
         builder = self._make_builder()
@@ -322,6 +375,12 @@ class OrchardEnvironment(BaseEnvironment):
                 await instance.delete()
             except Exception as exc:  # noqa: BLE001 - teardown is best effort
                 self.logger.debug("failed to delete %s: %s", self.session_id, exc)
+        jobs, self._jobs = self._jobs, None
+        if jobs is not None:
+            try:
+                await jobs.close()
+            except Exception as exc:  # noqa: BLE001
+                self.logger.debug("failed to close the job client: %s", exc)
         if self._owns_client and self._client is not None:
             try:
                 await self._client.close(cleanup=False)
@@ -352,6 +411,15 @@ class OrchardEnvironment(BaseEnvironment):
         user: str | int | None = None,
     ) -> ExecResult:
         instance = self._require_instance()
+        if self._failure is not None:
+            # Harbor still collects the patch and artifacts from a trial that
+            # failed. Sent here, each command would queue behind whatever the
+            # failed call left running — the orchestrator runs one exec per pod
+            # at a time — for a result from a pod the trial is discarding.
+            raise self._infra_error(
+                f"not sent, because an earlier command already failed in this "
+                f"pod ({type(self._failure.__cause__ or self._failure).__name__})"
+            )
 
         # The image's own environment sits underneath everything, exactly as
         # `docker exec` inherits it. Without this, a verifier invoked after a
@@ -391,8 +459,13 @@ class OrchardEnvironment(BaseEnvironment):
         effective_timeout = timeout_sec or self._settings.exec_timeout
         dispatched = time.monotonic()
         try:
+            # Not `instance.exec`: the SDK holds one POST open for the whole
+            # command and sends it again when that connection drops, which
+            # started a second agent CLI in this pod. The job client sends a
+            # command once and waits on its job id instead.
             result = await self._guard(
-                instance.exec(
+                self._job_client().run(
+                    instance.sandbox_id,
                     wrap_user(command, _as_user(effective_user)),
                     timeout=effective_timeout,
                     cwd=cwd or self.task_env_config.workdir or self._state.workdir,
@@ -409,6 +482,9 @@ class OrchardEnvironment(BaseEnvironment):
             # reason entirely. Without it, every call Harbor makes next queues
             # behind a process nobody is reading any more.
             await self._stop_agent_cli()
+            raise
+        except SandboxInfraError as exc:
+            self._failure = exc
             raise
         # An exec that takes minutes is either the agent loop itself — which is
         # supposed to — or the orchestrator taking that long to start or return
@@ -444,6 +520,15 @@ class OrchardEnvironment(BaseEnvironment):
 
         exit_code = result.exit_code
         stderr = result.stderr
+        error = (getattr(result, "error", None) or "").strip()
+        if exit_code is None and error and "timed out" not in error.lower():
+            # The orchestrator never got the command to the pod, or lost it
+            # there — "No pod IP available", "agent connection failed". Read as
+            # exit -1 this was an agent failure scored on a broken pod.
+            self._failure = self._infra_error(
+                f"the orchestrator could not run the command in the pod: {error}"
+            )
+            raise self._failure
         if exit_code is None:
             # The job never finished, so there is no exit code to report. Harbor
             # reads the -1 below as a crashed agent; say what actually happened.
@@ -643,14 +728,24 @@ class OrchardEnvironment(BaseEnvironment):
         exec timeout — hours, on a benchmark whose agent budget is hours, with
         no output while it does. Watching the record turns that into one probe
         interval, and the trial fails with a cause instead of stalling.
+
+        Any other transport failure becomes :class:`SandboxInfraError`. Commands
+        go through :mod:`orchard_evalkit.jobs`, which does not re-send one whose
+        connection dropped, so the failure reaches here instead — and the
+        answer to it is a new trial in a new pod, never a second attempt in
+        this one.
         """
         task = asyncio.ensure_future(awaitable)
         try:
             return await self._await_while_alive(task)
+        except SandboxInfraError:
+            raise
         except Exception as exc:
-            if getattr(exc, "status", None) != 404:
-                raise
-            raise self._sandbox_gone() from exc
+            if getattr(exc, "status", None) == 404:
+                raise self._sandbox_gone() from exc
+            if is_infra_failure(exc):
+                raise self._infra_error(exc) from exc
+            raise
 
     async def _await_while_alive(self, task: asyncio.Task):
         interval = self._settings.liveness_interval
@@ -699,6 +794,17 @@ class OrchardEnvironment(BaseEnvironment):
             "on the orchestrator ends this way every time; GET /resources shows "
             "whether its sandbox pool is oversubscribed instead. Lower "
             "--concurrency or ORCHARD_HARBOR_DEFAULT_MEMORY if it is."
+        )
+
+    def _infra_error(self, cause: BaseException | str) -> SandboxInfraError:
+        sandbox_id = getattr(self._instance, "sandbox_id", "?")
+        detail = (
+            cause if isinstance(cause, str) else f"{type(cause).__name__}: {cause}"
+        )
+        return SandboxInfraError(
+            f"the sandbox for {self.session_id} (sandbox {sandbox_id}) failed "
+            f"under the trial: {detail}. Nothing is retried in this pod; with "
+            "--infra-retries the trial runs again from scratch in a new one."
         )
 
     def _pin_endpoint(self) -> None:
@@ -1021,6 +1127,13 @@ class OrchardEnvironment(BaseEnvironment):
         )
         await self._client.__aenter__()
         self._owns_client = True
+
+    def _job_client(self) -> JobClient:
+        if self._jobs is None:
+            self._jobs = JobClient(
+                self._settings.require_base_url(), api_key=self._settings.api_key
+            )
+        return self._jobs
 
     def _make_builder(self) -> SandboxBuilder:
         return SandboxBuilder(

@@ -18,7 +18,7 @@ from orchard_evalkit.models import (
 )
 from orchard_evalkit.runner import EvalRunner, ResultWriter, load_existing_records
 from orchard_evalkit.sandbox import SandboxGoneError
-from tests.fakes import FakeSandboxClient
+from tests.fakes import FakeJobClient, FakeSandboxClient
 
 
 @register_harness
@@ -186,6 +186,9 @@ def fake_client(monkeypatch):
     state["created"] = lambda: [
         sb for client in state["clients"] for sb in client.created
     ]
+    monkeypatch.setattr(
+        runner_module, "JobClient", lambda *_, **__: FakeJobClient(state["created"])
+    )
     state["create_calls"] = lambda: sum(c.create_calls for c in state["clients"])
     state["last_create_calls"] = lambda: (
         state["clients"][-1].create_calls if state["clients"] else 0

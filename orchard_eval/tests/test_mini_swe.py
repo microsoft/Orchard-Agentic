@@ -120,6 +120,43 @@ class TestCommand:
         assert "environment.cwd=/testbed" in _launch_command(instance)
 
     @pytest.mark.asyncio
+    async def test_a_command_gets_120s_by_default(self):
+        # Long enough for a compiled language's test suite, and the same as
+        # the Harbor path, so the two runs measure the same agent.
+        ctx, instance = _context(_found)
+        await _harness().rollout(ctx)
+        assert "environment.timeout=120" in _launch_command(instance)
+
+    @pytest.mark.asyncio
+    async def test_the_per_command_timeout_can_be_set(self):
+        ctx, instance = _context(_found)
+        await _harness(step_timeout=600).rollout(ctx)
+        assert "environment.timeout=600" in _launch_command(instance)
+
+    @pytest.mark.asyncio
+    async def test_no_temperature_is_sent_unless_asked(self):
+        # Unset, the server's default applies — the checkpoint's own.
+        ctx, instance = _context(_found)
+        await _harness().rollout(ctx)
+        assert "temperature" not in _launch_command(instance)
+
+    @pytest.mark.asyncio
+    async def test_a_temperature_reaches_every_request(self):
+        ctx, instance = _context(_found)
+        await _harness(temperature=0.9).rollout(ctx)
+        assert "-c model.model_kwargs.temperature=0.9" in _launch_command(instance)
+
+    @pytest.mark.asyncio
+    async def test_a_temperature_in_the_overrides_still_wins(self):
+        # mini merges left to right, so the user's override has to come last.
+        ctx, instance = _context(_found)
+        await _harness(
+            temperature=0.9, config_overrides=["model.model_kwargs.temperature=0.7"]
+        ).rollout(ctx)
+        command = _launch_command(instance)
+        assert command.index("temperature=0.9") < command.index("temperature=0.7")
+
+    @pytest.mark.asyncio
     async def test_the_agent_gets_its_own_wall_clock_guard(self):
         # So a stuck rollout ends inside the agent, with a saved trajectory,
         # instead of being killed from outside.

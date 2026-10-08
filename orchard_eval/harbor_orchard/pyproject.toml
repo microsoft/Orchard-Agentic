@@ -12,6 +12,9 @@ license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
     "orchard-env>=0.1.0",
+    # orchard_evalkit.jobs: the send-once exec client both ways of running an
+    # agent share. Installed first anyway — see the repository README.
+    "orchard-eval>=0.1.0",
 ]
 
 [project.optional-dependencies]

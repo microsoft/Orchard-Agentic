@@ -19,8 +19,11 @@ class FakeJobResult:
 
     stdout: str = ""
     stderr: str = ""
-    exit_code: int = 0
+    #: ``None`` when the orchestrator ended the job without one, as it does on
+    #: a timeout or when it could not reach the pod; ``error`` then says which.
+    exit_code: int | None = 0
     status: str = "succeeded"
+    error: str | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -90,6 +93,9 @@ class FakeSandboxInstance:
 class FakeSandboxClient:
     """Stand-in for ``AsyncSandboxClient`` as an async context manager."""
 
+    base_url = "http://fake-orchestrator"
+    api_key = None
+
     def __init__(self, *, fail_times: int = 0, **_: Any):
         self.created: list[FakeSandboxInstance] = []
         self.fail_times = fail_times
@@ -108,6 +114,24 @@ class FakeSandboxClient:
         instance = FakeSandboxInstance(sandbox_id=f"sbx-{self.create_calls}")
         self.created.append(instance)
         return instance
+
+
+class FakeJobClient:
+    """Stand-in for ``orchard_evalkit.jobs.JobClient``.
+
+    Runs each command on the fake instance it names, so the instance's
+    ``commands`` and ``responder`` work exactly as they do without one.
+    """
+
+    def __init__(self, instances: Callable[[], list[FakeSandboxInstance]]):
+        self._instances = instances
+
+    async def run(self, sandbox_id: str, command, **options: Any) -> FakeJobResult:
+        instance = next(i for i in self._instances() if i.sandbox_id == sandbox_id)
+        return await instance.exec(command, **options)
+
+    async def close(self) -> None:
+        return None
 
 
 def run_in_thread(coro_fn: Callable[[], Any]) -> Any:

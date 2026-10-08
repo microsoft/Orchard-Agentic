@@ -73,6 +73,18 @@ python scripts/session_router.py --replicas 8 --base-port 8000 --port 8100 \
 
 Extra sglang flags pass straight through, e.g.
 `./scripts/serve_sglang_fleet.sh --preferred-sampling-params '{"temperature":1.0,"top_p":0.95}'`.
+Qwen3.8-27B with EAGLE speculative decoding and an fp8 KV cache:
+
+```bash
+MODEL_PATH=/path/to/models/Qwen/Qwen3.8-27B SGLANG_ENABLE_SPEC_V2=1 REPLICAS=8 \
+    ./scripts/serve_sglang_fleet.sh \
+    --trust-remote-code --allow-auto-truncate \
+    --kv-cache-dtype fp8_e4m3 --mem-fraction-static 0.85 \
+    --chunked-prefill-size 32768 --max-prefill-tokens 32768 \
+    --speculative-algorithm EAGLE --speculative-num-steps 3 \
+    --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 \
+    --preferred-sampling-params '{"temperature":1.0,"top_p":0.95,"top_k":20,"min_p":0.0,"repetition_penalty":1.0}'
+```
 
 ### 2. Expose it to the sandboxes (Optional)
 
@@ -87,6 +99,9 @@ curl -L https://github.com/fatedier/frp/releases/download/v0.61.1/frp_0.61.1_lin
 FRP_SERVER_ADDR=<frps-public-ip> FRP_TOKEN=<frps-token> \
 REPLICAS=1 BASE_PORT=8100 REMOTE_BASE_PORT=30021 ./scripts/frpc_fleet.sh
 ```
+
+`REPLICAS=1` publishes only the router's port; the router spreads the traffic
+over the eight engines behind it.
 
 ### 3. Set credentials
 
@@ -139,6 +154,15 @@ SAVE_ROOT=/path/to/eval_runs \
     ./scripts/run_all_evals.sh Qwen3.8-27B \
     /path/to/models/Qwen/Qwen3.8-27B codex \
     swebench-verified,swebench-multilingual,swebench-pro-v2,tb2.1,deepswe1.1
+
+# mini-swe-agent at temperature 0.9, SWE-bench Pro V2 narrowed to HARD-51
+PRO_V2_HARD51=1 TEMPERATURE=0.9 CONCURRENCY=32 \
+DEEPSWE_ALLOW_INTERNET=0 PRO_ALLOW_INTERNET=0 \
+ORCHARD_HARBOR_COMMIT_BEFORE_COLLECT=1 \
+SAVE_ROOT=/path/to/eval_runs \
+    ./scripts/run_all_evals.sh Qwen3.8-27B \
+    /path/to/models/Qwen/Qwen3.8-27B mini-swe-agent \
+    swebench-pro-v2,tb2.1,deepswe1.1
 ```
 
 | Argument | Values |
@@ -151,6 +175,10 @@ SAVE_ROOT=/path/to/eval_runs \
 Both lists are comma- or space-separated and can also be set as env vars.
 `DEEPSWE_ALLOW_INTERNET=1` / `PRO_ALLOW_INTERNET=0` override the tasks' own
 network declarations (scores are then not comparable with the leaderboard).
+`PRO_V2_HARD51=1` runs only upstream's HARD-51 subset of `swebench-pro-v2`,
+written to `<harness>-swebench-pro-v2-hard51` so it never overwrites a full V2
+run. `TEMPERATURE=T` sets mini-swe-agent's sampling temperature; unset, the
+server default applies.
 
 ### 6. Read the results
 
@@ -160,6 +188,11 @@ marked `*`):
 ```bash
 python scripts/results_table.py results/<MODEL_TAG> --counts
 ```
+
+Two more tables follow: mean agent turns (LLM responses) and mean input / output
+tokens per trial, each as `all (solved)`. A re-grade column reports the solving
+run whose patch it replayed. Turns cost one trajectory read per Harbor trial;
+`--no-efficiency` skips both tables.
 
 For a single run:
 

@@ -24,6 +24,8 @@ from typing import Any
 
 from orchard_env import AsyncSandboxInstance, JobResult
 
+from orchard_evalkit.jobs import JobClient, JobTransportError
+
 logger = logging.getLogger(__name__)
 
 #: Paths a harness routinely leaves behind that must never reach the patch.
@@ -77,6 +79,17 @@ class SandboxGoneError(RuntimeError):
         super().__init__(f"sandbox {sandbox_id} no longer exists ({cause})")
 
 
+class SandboxUnusableError(RuntimeError):
+    """The orchestrator could not run a command in this sandbox.
+
+    Either it never got the command to the pod — the job ended with no exit
+    code and an error that is not a timeout, such as "No pod IP available" —
+    or an earlier command here already failed for that kind of reason, and
+    nothing more is sent. Like :class:`SandboxGoneError` it is the cluster's
+    failure, so the runner retries the instance in a fresh pod.
+    """
+
+
 def _http_status(exc: BaseException) -> int | None:
     """HTTP status carried by an SDK exception, from either transport."""
     status = getattr(exc, "status", None)
@@ -125,7 +138,7 @@ def is_transport_error(exc: BaseException) -> bool:
         return status >= 500 or status in RETRYABLE_CLIENT_STATUSES
     if isinstance(exc, _FILESYSTEM_ERRORS):
         return False
-    if isinstance(exc, ConnectionError | TimeoutError):
+    if isinstance(exc, JobTransportError | ConnectionError | TimeoutError):
         return True
     return any(base.__name__ in _TRANSPORT_BASE_NAMES for base in type(exc).__mro__)
 
@@ -138,7 +151,9 @@ def is_sandbox_failure(exc: BaseException) -> bool:
     agent or the patch did is the latter; anything the cluster did is the
     former.
     """
-    return isinstance(exc, SandboxGoneError) or is_transport_error(exc)
+    return isinstance(exc, SandboxGoneError | SandboxUnusableError) or (
+        is_transport_error(exc)
+    )
 
 
 @dataclass
@@ -164,6 +179,10 @@ class EvalSandbox:
         loop: The event loop owning ``instance``. Captured at construction so
             :meth:`exec_sync` can hand work back to it from another thread.
         default_timeout: Seconds applied to commands that do not pass one.
+        jobs: Runs the commands. Without one they go through ``instance.exec``,
+            which is what the test doubles implement — but the SDK's ``exec``
+            re-sends a command whose connection dropped, so anything that
+            launches an agent must pass a :class:`JobClient`. The runner does.
     """
 
     def __init__(
@@ -173,10 +192,15 @@ class EvalSandbox:
         workdir: str = "/testbed",
         loop: asyncio.AbstractEventLoop | None = None,
         default_timeout: int = 300,
+        jobs: JobClient | None = None,
     ):
         self._instance = instance
         self.workdir = workdir
         self.default_timeout = default_timeout
+        self._jobs = jobs
+        #: The first infrastructure failure of a command here. Once set, no
+        #: further command is sent: see :meth:`exec`.
+        self._failure: BaseException | None = None
         # Only ``exec_sync`` needs a loop reference. Resolve it eagerly when we
         # are already on one, but never fail construction off-loop: an
         # EvalSandbox is perfectly usable via ``await exec()`` without this.
@@ -226,16 +250,43 @@ class EvalSandbox:
                 puts all of stderr after all of stdout — which destroys the
                 relative ordering of anything that writes to both.
         """
+        if self._failure is not None:
+            # A harness still reads the diff after a failed agent run. Sent
+            # here, that command would queue behind whatever the failed call
+            # left running — the orchestrator runs one exec per pod at a time —
+            # for a result from a pod the runner is about to discard.
+            raise SandboxUnusableError(
+                f"not sent to sandbox {self.sandbox_id}: an earlier command there "
+                f"already failed ({type(self._failure).__name__})"
+            )
         if merge_stderr:
             command = f"{{\n{command}\n}} 2>&1"
-        with self._translating_404():
-            result = await self._instance.exec(
-                command,
-                timeout=timeout or self.default_timeout,
-                cwd=cwd if cwd is not None else self.workdir,
-                env=env,
-                login_shell=login_shell,
+        options = {
+            "timeout": timeout or self.default_timeout,
+            "cwd": cwd if cwd is not None else self.workdir,
+            "env": env,
+            "login_shell": login_shell,
+        }
+        try:
+            with self._translating_404():
+                if self._jobs is not None:
+                    result = await self._jobs.run(self.sandbox_id, command, **options)
+                else:
+                    result = await self._instance.exec(command, **options)
+        except Exception as exc:
+            # A client-side deadline does not condemn the pod: it may be fine,
+            # and the diff a timed-out agent left is still worth reading.
+            if is_sandbox_failure(exc) and not isinstance(exc, TimeoutError):
+                self._failure = exc
+            raise
+        error = (getattr(result, "error", None) or "").strip()
+        if result.exit_code is None and error and "timed out" not in error.lower():
+            # Read as exit -1 this was an agent failure scored on a broken pod.
+            self._failure = SandboxUnusableError(
+                f"the orchestrator could not run the command in sandbox "
+                f"{self.sandbox_id}: {error}"
             )
+            raise self._failure
         if check and not result.succeeded:
             raise SandboxCommandError(command, result)
         stdout = result.stdout or ""
