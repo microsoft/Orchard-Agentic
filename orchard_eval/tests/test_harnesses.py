@@ -30,6 +30,7 @@ from orchard_evalkit.harnesses.installed_cli import (
     OpencodeHarness,
 )
 from orchard_evalkit.harnesses.trajectory import PARSERS
+from orchard_evalkit.jobs import ExecDispatchError
 from orchard_evalkit.models import (
     EXIT_AGENT_ERROR,
     EXIT_COMPLETED,
@@ -502,6 +503,10 @@ class TestInstalledCliHarness:
         def responder(cmd):
             if "command -v" in cmd:
                 return FakeJobResult(stdout="/usr/bin/stubagent")
+            if "--version" in cmd:
+                # The runnability probe has to pass, or the agent never launches
+                # and there is no non-zero exit to test.
+                return FakeJobResult(stdout="stubagent 1.0")
             if "git diff" in cmd:
                 return FakeJobResult(stdout="diff --git a/f b/f\n")
             return FakeJobResult(exit_code=1, stderr="step limit")
@@ -596,6 +601,30 @@ class TestInstalledCliHarness:
         status, error = harness._classify_nonzero_exit(1, 1900.0, 42)
         assert status == EXIT_AGENT_ERROR
         assert "exited with code 1" in error
+
+    @pytest.mark.asyncio
+    async def test_a_dropped_agent_launch_is_infra_and_the_pod_is_left_alone(self):
+        # The SDK used to answer this by launching the agent a second time in
+        # the same pod. Now it is an infra error, which the runner retries on a
+        # fresh pod — and the diff is not read from this one.
+        def responder(cmd):
+            if "command -v" in cmd:
+                return FakeJobResult(stdout="/usr/bin/stubagent")
+            if "--version" in cmd:
+                return FakeJobResult(stdout="stub 1.0")
+            if "stubagent run" in cmd:
+                raise ExecDispatchError("POST failed after it was sent")
+            return FakeJobResult()
+
+        ctx, instance = _context(responder)
+        harness = _StubHarness(model=ModelConfig(name="m"), params={}, timeout=60)
+        result = await harness.rollout(ctx)
+
+        assert result.exit_status == EXIT_INFRA_ERROR
+        assert "ExecDispatchError" in (result.error or "")
+        sent = [str(c["command"]) for c in instance.commands]
+        assert sum("stubagent run" in c for c in sent) == 1
+        assert not any("git diff" in c for c in sent)
 
     @pytest.mark.asyncio
     async def test_a_timeout_is_not_downgraded_to_infra_by_a_lost_diff(self):
@@ -1057,10 +1086,16 @@ class TestClaudeCodeSpeaksTheMessagesApi:
 
 class TestTrajectoryCapture:
     #: The launch command is `stubagent [--json] run "$PROMPT"`, so match on the
-    #: binary while excluding the PATH probe rather than on an exact arg order.
+    #: binary while excluding the two probes that precede it — the PATH lookup
+    #: and the `stubagent --version` run that proves the CLI can execute —
+    #: rather than on an exact arg order.
     @staticmethod
     def _is_agent_call(command: str) -> bool:
-        return "stubagent" in command and "command -v" not in command
+        return (
+            "stubagent" in command
+            and "command -v" not in command
+            and "--version" not in command
+        )
 
     def _ctx_and_instance(self, stdout: str):
         def responder(cmd):

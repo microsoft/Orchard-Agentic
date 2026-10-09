@@ -173,12 +173,14 @@ class _CleanTreeGate:
     read the code, ran the tests, and submitted. Nothing failed, so the run
     reported 92.68%.
 
-    The cause is below this package, in the sandbox client: ``POST /exec`` is
-    re-submitted when the HTTP call carrying the *result* dies, which starts a
-    second CLI beside the first rather than resuming it. That is worth fixing
-    where it happens, but a guard here is worth having regardless — it is the
-    one place that knows what the agent is entitled to assume, and it catches
-    every other way a pod could arrive used.
+    The cause was below this package, in the sandbox SDK: ``POST /exec`` was
+    re-submitted when the HTTP call carrying the *result* died, which started a
+    second CLI beside the first rather than resuming it. Commands now go through
+    :mod:`orchard_evalkit.jobs`, which sends one once and waits on its job id,
+    and a lost connection fails the trial with ``SandboxInfraError`` so Harbor
+    reruns it in a new pod. This gate runs before the first launch only, so it
+    never saw that re-send — it stays as the guard for every other way a pod
+    could arrive used.
 
     Mixed in ahead of :class:`_ModelPatchCapture` so a refused trial writes no
     ``model.patch``: there is no rollout to re-grade, and a patch of someone
@@ -460,6 +462,57 @@ class MiniSweAgent(
     #: mini is a typer app with no --version; --help runs the same imports,
     #: which is what a broken interpreter or a missing dependency shows up in.
     payload_probe_flag = "--help"
+
+    #: Seconds one bash command the agent runs may take before mini kills it.
+    #: The ``mini`` config Harbor loads allows 30, which a Go build or a jest
+    #: run in a SWE-bench Pro image can need more than: on the V2 HARD-51 tasks
+    #: 1.8% of command outputs reported a timeout, against 0.26% for a
+    #: standalone mini-swe-agent setup allowing 600s.
+    DEFAULT_STEP_TIMEOUT_S = 120
+
+    def __init__(
+        self,
+        *args,
+        step_timeout: int | None = DEFAULT_STEP_TIMEOUT_S,
+        temperature: float | None = None,
+        config: dict | None = None,
+        config_file: str | None = None,
+        **kwargs,
+    ) -> None:
+        """Harbor's agent, with mini's per-command timeout and temperature set.
+
+        Both land in the config Harbor layers over ``-c mini``:
+
+        ``step_timeout`` (``--ak step_timeout=N``)
+            ``environment.timeout``; ``0`` or ``None`` keeps mini's own.
+        ``temperature`` (``--ak temperature=T``)
+            ``model.model_kwargs.temperature``, which litellm sends with every
+            request. ``None`` sends none, so the server's default applies.
+
+        A ``config`` that sets either itself wins. A ``config_file`` is passed
+        through untouched — Harbor cannot merge one — so asking for a
+        temperature alongside it is an error rather than silently dropped.
+        """
+        if config_file is not None:
+            if temperature is not None:
+                raise ValueError(
+                    "temperature cannot be combined with config_file; set "
+                    "model.model_kwargs.temperature in the file instead"
+                )
+        else:
+            config = dict(config or {})
+            if step_timeout:
+                environment = dict(config.get("environment") or {})
+                environment.setdefault("timeout", int(step_timeout))
+                config["environment"] = environment
+            if temperature is not None:
+                model = dict(config.get("model") or {})
+                model_kwargs = dict(model.get("model_kwargs") or {})
+                model_kwargs.setdefault("temperature", float(temperature))
+                model["model_kwargs"] = model_kwargs
+                config["model"] = model
+            config = config or None
+        super().__init__(*args, config=config, config_file=config_file, **kwargs)
 
     #: What Harbor's run command invokes. The payload publishes the wrapper
     #: under mini's other console-script name, so the two have to be bridged.

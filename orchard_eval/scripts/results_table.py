@@ -52,6 +52,14 @@ as the ``Partial`` column of Harbor's summary table — gets a second
 ``(partial)`` column beside its pass rate, reading ``71.90% (95.20%, 23.70%)``:
 the partial score, then the share of P2P and of F2P tests left green. See
 ``partial_credit`` and ``test_rates`` for what those numbers are and are not.
+
+Two more tables say what each score cost: the mean number of agent turns per
+trial — LLM responses, one per call — and the mean input / output tokens the
+agent spent across those calls. Each cell is the mean over every trial that
+recorded it, then in parentheses over the solved trials alone. A re-grade
+column inherits both from the agent run whose patch it replayed. Turns are read
+from each trial's trajectory, which costs one more file per trial;
+``--no-efficiency`` skips both tables.
 """
 
 from __future__ import annotations
@@ -69,6 +77,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from orchard_evalkit.harbor_bridge import (  # noqa: E402
     TrialOutcome,
+    agent_tokens,
     collect_outcomes,
     newest_attempt,
     summarize,
@@ -92,11 +101,15 @@ HARNESSES = [
 #: Harbor cross-check job lands in the column of the run it exists to be
 #: compared against, and one job's score overwrites the other's cell. The V2
 #: jobs, a different benchmark entirely, need the same care, and the V2
-#: re-grade has to precede V2 itself for the same reason.
+#: re-grade has to precede V2 itself for the same reason, and a HARD-51-only run
+#: (run_all_evals.sh with PRO_V2_HARD51=1) has to precede both, or its 51 trials
+#: would take over the full set's cell.
 BENCHMARKS = [
     ("swebench-verified", "SWE-bench Verified"),
     ("swebench-multilingual", "SWE-bench Multilingual"),
     ("swebench-pro-harbor", "SWE-bench Pro (Harbor)"),
+    ("swebench-pro-v2-hard51-regrade", "SWE-bench Pro V2 HARD-51 (re-grade)"),
+    ("swebench-pro-v2-hard51", "SWE-bench Pro V2 HARD-51 (Harbor)"),
     ("swebench-pro-v2-regrade", "SWE-bench Pro V2 (re-grade)"),
     ("swebench-pro-v2", "SWE-bench Pro V2 (Harbor)"),
     ("swebench-pro", "SWE-bench Pro"),
@@ -112,6 +125,8 @@ COLUMN_ORDER = [
     "SWE-bench Pro",
     "SWE-bench Pro V2 (Harbor)",
     "SWE-bench Pro V2 (re-grade)",
+    "SWE-bench Pro V2 HARD-51 (Harbor)",
+    "SWE-bench Pro V2 HARD-51 (re-grade)",
     "Terminal-Bench 2.1",
     "DeepSWE 1.1",
 ]
@@ -119,12 +134,17 @@ COLUMN_ORDER = [
 #: Columns left out unless ``--all-benchmarks`` is passed. The non-Harbor V1 run
 #: is superseded by *SWE-bench Pro (Harbor)*, and V2's direct score by its
 #: re-grade, the number to publish.
-HIDDEN_BY_DEFAULT = frozenset({"SWE-bench Pro", "SWE-bench Pro V2 (Harbor)"})
+HIDDEN_BY_DEFAULT = frozenset(
+    {"SWE-bench Pro", "SWE-bench Pro V2 (Harbor)", "SWE-bench Pro V2 HARD-51 (Harbor)"}
+)
 
 EMPTY = "-"
 
 #: Harbor jobs scored at once; each also reads its own trials in parallel.
 JOB_WORKERS = 8
+
+#: Trial trajectories read at once per job, for the turn counts.
+TRAJECTORY_WORKERS = 16
 
 #: The verifier's own partial-credit metric, as Harbor's summary table spells it.
 PARTIAL_KEY = "partial"
@@ -133,6 +153,11 @@ PARTIAL_KEY = "partial"
 #: ``scale-ai/<id>`` over overlapping ids, so the subset is kept to V2's columns.
 HARD_LABEL_PREFIX = "SWE-bench Pro V2"
 HARD_SUBSET = "HARD-51"
+
+
+def wants_hard_column(label: str) -> bool:
+    """A full V2 column gets a HARD-51 sub-score; a HARD-51-only one already is it."""
+    return label.startswith(HARD_LABEL_PREFIX) and HARD_SUBSET not in label
 
 
 def default_hard_file() -> Path:
@@ -160,6 +185,23 @@ def bare_task_id(task: str) -> str:
     return task.rsplit("/", 1)[-1]
 
 
+class Effort(NamedTuple):
+    """Per-trial means of what the agent spent; None where nothing recorded it."""
+
+    turns: float | None = None
+    input_tokens: float | None = None
+    output_tokens: float | None = None
+
+
+class Spent(NamedTuple):
+    """One trial's turns and tokens, beside whether it was solved."""
+
+    solved: bool
+    turns: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
 class Score(NamedTuple):
     solved: int
     total: int
@@ -176,6 +218,9 @@ class Score(NamedTuple):
     #: Solved / scored over the HARD-51 trials only, for SWE-bench Pro V2 jobs.
     hard_solved: int | None = None
     hard_total: int | None = None
+    #: Mean turns and tokens over every trial, and over the solved ones alone.
+    effort: Effort | None = None
+    effort_solved: Effort | None = None
 
 
 def split_run_name(name: str) -> tuple[str, str]:
@@ -328,7 +373,155 @@ def regressions(outcomes: list[TrialOutcome]) -> list[str]:
     return out
 
 
-def swebench_scores(root: Path, keep, want_times: bool) -> list[tuple[str, Score]]:
+def _count(value) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
+def mean_effort(spent: list[Spent]) -> tuple[Effort | None, Effort | None]:
+    """``(over every trial, over the solved trials)``.
+
+    A zero counts as unrecorded, not as free: a trial that made no LLM call at
+    all lost its sandbox or never started, and would read as an efficient one.
+    """
+
+    def means(rows: list[Spent]) -> Effort | None:
+        def avg(values) -> float | None:
+            kept = [value for value in values if value]
+            return sum(kept) / len(kept) if kept else None
+
+        effort = Effort(
+            avg(row.turns for row in rows),
+            avg(row.input_tokens for row in rows),
+            avg(row.output_tokens for row in rows),
+        )
+        return effort if any(value is not None for value in effort) else None
+
+    return means(spent), means([row for row in spent if row.solved])
+
+
+def usage_tokens(usage) -> tuple[int | None, int | None]:
+    """``(input, output)`` out of a native rollout's ``metrics.usage``."""
+    if not isinstance(usage, dict):
+        return None, None
+    input_tokens = _count(usage.get("input_tokens"))
+    if input_tokens is not None:
+        # Anthropic's input_tokens leaves the cached prefix out; OpenAI's, which
+        # carries cached_input_tokens instead, already counts it.
+        for key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+            input_tokens += _count(usage.get(key)) or 0
+    return input_tokens, _count(usage.get("output_tokens"))
+
+
+def native_spent(rows: list[dict]) -> list[Spent]:
+    """One entry per instance of an ``orchard-eval run``, its last line winning.
+
+    Every harness records ``turns``; only the ones whose CLI reports usage —
+    codex, today — record tokens.
+    """
+    latest = {row.get("instance_id"): row for row in rows}
+    out = []
+    for row in latest.values():
+        metrics = row.get("metrics")
+        if not isinstance(metrics, dict):
+            metrics = {}
+        out.append(
+            Spent(
+                bool(row.get("resolved")),
+                _count(metrics.get("turns")),
+                *usage_tokens(metrics.get("usage")),
+            )
+        )
+    return out
+
+
+def agent_turns(trial_dir: Path) -> int | None:
+    """LLM responses in one Harbor trial, from the agent's own trajectory.
+
+    Harbor's ATIF ``trajectory.json`` has one ``agent`` step per response —
+    Claude Code's several log lines per message already merged into one. pi
+    writes no ATIF file, only its session log, one line per message.
+    """
+    agent = trial_dir / "agent"
+    try:
+        data = json.loads((agent / "trajectory.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        data = None
+    except (OSError, ValueError):
+        return None
+    if isinstance(data, dict):
+        steps = data.get("steps")
+        if not isinstance(steps, list):
+            return None
+        return sum(
+            1 for step in steps if isinstance(step, dict) and step.get("source") == "agent"
+        ) or None
+
+    turns = 0
+    for path in sorted((agent / "pi" / "sessions").glob("*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            message = row.get("message") if isinstance(row, dict) else None
+            if isinstance(message, dict) and message.get("role") == "assistant":
+                turns += 1
+    return turns or None
+
+
+def replay_source(trial_dir: Path) -> Path | None:
+    """The agent trial whose patch a re-grade trial replayed.
+
+    ``replay.json`` names the patch by absolute path. When the results tree has
+    been copied elsewhere since, the same path is re-anchored at this trial's
+    own ``harbor/`` directory.
+    """
+    try:
+        data = json.loads((trial_dir / "agent" / "replay.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    patch = data.get("patch") if isinstance(data, dict) else None
+    if not isinstance(patch, str) or not patch:
+        return None
+    source = Path(patch).parent.parent  # <trial>/agent/model.patch
+    if source.is_dir():
+        return source
+    parts = source.parts
+    if "harbor" not in parts:
+        return None
+    below = parts[len(parts) - parts[::-1].index("harbor") :]
+    # trial_dir is harbor/<job>/<attempt>/<trial>.
+    moved = trial_dir.parents[2].joinpath(*below)
+    return moved if moved.is_dir() else None
+
+
+def harbor_spent(outcome: TrialOutcome) -> Spent:
+    """One Harbor trial's turns and tokens, a re-grade's taken from its source."""
+    trial_dir = outcome.trial_dir
+    input_tokens, output_tokens = outcome.input_tokens, outcome.output_tokens
+    if trial_dir is not None and input_tokens is None and output_tokens is None:
+        source = replay_source(trial_dir)
+        if source is not None:
+            trial_dir = source
+            try:
+                data = json.loads((source / "result.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = None
+            if isinstance(data, dict):
+                input_tokens, output_tokens = agent_tokens(data)
+    turns = agent_turns(trial_dir) if trial_dir is not None else None
+    return Spent(outcome.solved, turns, input_tokens, output_tokens)
+
+
+def swebench_scores(
+    root: Path, keep, want_times: bool, want_effort: bool = True
+) -> list[tuple[str, Score]]:
     """One entry per ``orchard-eval run`` directory, newest attempt only.
 
     ``summary.json`` is written once, at the end. Until then the run's progress
@@ -343,15 +536,25 @@ def swebench_scores(root: Path, keep, want_times: bool) -> list[tuple[str, Score
         attempts = sorted(p for p in run_dir.iterdir() if p.is_dir())
         if not attempts:
             continue
-        score = read_attempt(attempts[-1], want_times)
+        score = read_attempt(attempts[-1], want_times, want_effort)
         if score is not None:
             out.append((run_dir.name, score))
     return out
 
 
-def read_attempt(attempt: Path, want_times: bool = True) -> Score | None:
+def read_attempt(
+    attempt: Path, want_times: bool = True, want_effort: bool = True
+) -> Score | None:
     summary = attempt / "summary.json"
-    if summary.is_file():
+    records = attempt / "results.jsonl"
+    finished = summary.is_file()
+    # A finished run's score is in summary.json; its turns and tokens are not.
+    rows = read_records(records) if want_effort or not finished else []
+    effort = effort_solved = None
+    if want_effort and rows:
+        effort, effort_solved = mean_effort(native_spent(rows))
+
+    if finished:
         try:
             data = json.loads(summary.read_text(encoding="utf-8"))
             wall_clock = float(data.get("wall_clock_s") or 0)
@@ -359,15 +562,30 @@ def read_attempt(attempt: Path, want_times: bool = True) -> Score | None:
                 int(data["resolved"]),
                 int(data["total"]),
                 elapsed_s=wall_clock or (dir_span_s(attempt) if want_times else None),
+                effort=effort,
+                effort_solved=effort_solved,
             )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             print(f"skipping unreadable {summary}: {exc}", file=sys.stderr)
             return None
 
-    records = attempt / "results.jsonl"
-    if not records.is_file():
+    if not rows:
         return None
-    done = solved = 0
+    return Score(
+        sum(bool(row.get("resolved")) for row in rows),
+        len(rows),
+        running=True,
+        elapsed_s=dir_span_s(attempt) if want_times else None,
+        effort=effort,
+        effort_solved=effort_solved,
+    )
+
+
+def read_records(records: Path) -> list[dict]:
+    """Every complete line of ``results.jsonl``; empty when there is none."""
+    if not records.is_file():
+        return []
+    rows = []
     try:
         with records.open(encoding="utf-8") as handle:
             for line in handle:
@@ -379,23 +597,20 @@ def read_attempt(attempt: Path, want_times: bool = True) -> Score | None:
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                done += 1
-                solved += bool(row.get("resolved"))
+                if isinstance(row, dict):
+                    rows.append(row)
     except OSError as exc:
         print(f"skipping unreadable {records}: {exc}", file=sys.stderr)
-        return None
-    if not done:
-        return None
-    return Score(
-        solved,
-        done,
-        running=True,
-        elapsed_s=dir_span_s(attempt) if want_times else None,
-    )
+        return []
+    return rows
 
 
 def harbor_scores(
-    root: Path, keep, want_times: bool, hard_ids: frozenset[str] = frozenset()
+    root: Path,
+    keep,
+    want_times: bool,
+    hard_ids: frozenset[str] = frozenset(),
+    want_effort: bool = True,
 ) -> tuple[list[tuple[str, Score]], dict[str, list[str]]]:
     """One entry per Harbor job, plus the P2P regressions each one left.
 
@@ -422,12 +637,18 @@ def harbor_scores(
         p2p, f2p = test_rates(outcomes)
         hard_solved = hard_total = None
         label = benchmark_label(split_run_name(name)[1])
-        if hard_ids and label.startswith(HARD_LABEL_PREFIX):
+        if hard_ids and wants_hard_column(label):
             hard = [o for o in outcomes if bare_task_id(o.task) in hard_ids]
             hard_solved, hard_total = sum(o.solved for o in hard), len(hard)
         elapsed = None
         if want_times:
             elapsed = trial_span_s(outcomes) or dir_span_s(attempt)
+        effort = effort_solved = None
+        if want_effort:
+            workers = min(TRAJECTORY_WORKERS, len(outcomes))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                spent = list(pool.map(harbor_spent, outcomes))
+            effort, effort_solved = mean_effort(spent)
         score = Score(
             summary["solved"],
             summary["total"],
@@ -439,6 +660,8 @@ def harbor_scores(
             elapsed_s=elapsed,
             hard_solved=hard_solved,
             hard_total=hard_total,
+            effort=effort,
+            effort_solved=effort_solved,
         )
         return name, score, regressions(outcomes)
 
@@ -463,6 +686,7 @@ def build_matrix(
     want_times: bool = True,
     hard_ids: frozenset[str] = frozenset(),
     hidden: frozenset[str] = frozenset(),
+    want_effort: bool = True,
 ):
     """-> (rows, columns, cells, skipped, hidden_jobs, regressions).
 
@@ -489,8 +713,8 @@ def build_matrix(
             return False
         return True
 
-    harbor, regressed = harbor_scores(root, keep, want_times, hard_ids)
-    for name, score in swebench_scores(root, keep, want_times) + harbor:
+    harbor, regressed = harbor_scores(root, keep, want_times, hard_ids, want_effort)
+    for name, score in swebench_scores(root, keep, want_times, want_effort) + harbor:
         harness, benchmark = split_run_name(name)
         label = benchmark_label(benchmark)
         if harness not in harnesses:
@@ -562,6 +786,40 @@ def format_duration(seconds: float | None) -> str:
     return f"{secs}s"
 
 
+def format_tokens(value: float | None) -> str:
+    if value is None:
+        return EMPTY
+    for scale, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if value >= scale:
+            return f"{value / scale:.3g}{suffix}"
+    return f"{value:.0f}"
+
+
+def format_effort(score: Score | None, what: str) -> str:
+    """``mean over all trials (mean over solved trials)``, for *what* of
+    ``turns`` or ``tokens``."""
+    if score is None:
+        return EMPTY
+
+    def one(effort: Effort | None) -> str | None:
+        if effort is None:
+            return None
+        if what == "turns":
+            return None if effort.turns is None else f"{effort.turns:.1f}"
+        if effort.input_tokens is None and effort.output_tokens is None:
+            return None
+        return (
+            f"{format_tokens(effort.input_tokens)}"
+            f" / {format_tokens(effort.output_tokens)}"
+        )
+
+    body = one(score.effort)
+    if body is None:
+        return EMPTY
+    body += f" ({one(score.effort_solved) or EMPTY})"
+    return body + ("*" if score.running else "")
+
+
 def heading(column: tuple[str, str]) -> str:
     label, kind = column
     if kind == "hard":
@@ -621,6 +879,23 @@ def time_grid(title, harnesses, columns, cells):
         + [format_duration(value) for value in column_totals]
         + [format_duration(sum(column_totals))]
     )
+    return header, rows
+
+
+EFFORT_TITLES = {
+    "turns": "mean turns (solved)",
+    "tokens": "mean tokens in / out (solved)",
+}
+
+
+def effort_grid(title, harnesses, columns, cells, what):
+    """Mean turns or tokens per trial, one cell per job."""
+    labels = [label for label, kind in columns if kind == "rate"]
+    header = [f"{title} — {EFFORT_TITLES[what]}"] + labels
+    rows = [
+        [harness] + [format_effort(cells.get((harness, label)), what) for label in labels]
+        for harness in harnesses
+    ]
     return header, rows
 
 
@@ -685,6 +960,11 @@ def main() -> int:
         help="Skip the wall-clock table, and the file walk that dates it",
     )
     parser.add_argument(
+        "--no-efficiency",
+        action="store_true",
+        help="Skip the turns and tokens tables, and the trajectory reads behind them",
+    )
+    parser.add_argument(
         "--hard51-file",
         type=Path,
         default=None,
@@ -721,7 +1001,12 @@ def main() -> int:
             continue
 
         harnesses, columns, cells, skipped, hidden_jobs, regressed = build_matrix(
-            root, args.include_smoke, not args.no_times, hard_ids, hidden
+            root,
+            args.include_smoke,
+            not args.no_times,
+            hard_ids,
+            hidden,
+            not args.no_efficiency,
         )
         if not cells:
             print(f"no completed runs under {root}", file=sys.stderr)
@@ -736,6 +1021,12 @@ def main() -> int:
             header, rows = time_grid(root.name, harnesses, columns, cells)
             print(render_grid(header, rows, args.format))
 
+        if not args.no_efficiency:
+            for what in ("turns", "tokens"):
+                print()
+                header, rows = effort_grid(root.name, harnesses, columns, cells, what)
+                print(render_grid(header, rows, args.format))
+
         if args.format == "csv":
             continue
 
@@ -746,7 +1037,7 @@ def main() -> int:
                 f" {len(hard_ids)} ids in {hard_file}."
             )
         elif not hard_ids and any(
-            label.startswith(HARD_LABEL_PREFIX) for label, _kind in columns
+            wants_hard_column(label) for label, _kind in columns
         ):
             print(
                 f"  {HARD_SUBSET}: not shown — no ids at {hard_file};"
@@ -762,6 +1053,13 @@ def main() -> int:
                 "  (P2P, F2P) beside it: mean share of PASS_TO_PASS and of"
                 " FAIL_TO_PASS tests green, averaged per trial over the trials"
                 " whose verifier counted them."
+            )
+        if not args.no_efficiency:
+            print(
+                "  turns: LLM responses per trial; tokens: input / output summed"
+                " over those calls, input re-counting the whole context each"
+                " time. Mean over the trials that recorded them, then (over the"
+                " solved ones). A re-grade reports the run whose patch it replayed."
             )
         running = sorted(
             f"{h} x {label}" for (h, label), score in cells.items() if score.running

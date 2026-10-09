@@ -77,6 +77,23 @@ STOCK_AGENTS_ENV = "ORCHARD_HARBOR_STOCK_AGENTS"
 #: enough to delete a few hundred pods, short enough not to look hung.
 SHUTDOWN_GRACE_S = 120
 
+#: Exceptions that mean the sandbox failed under a trial, not the agent in it:
+#: ``SandboxInfraError`` and its subclass ``SandboxGone`` from
+#: ``harbor_orchard.environment``, and Harbor's own for a pod that never came
+#: up. Harbor retries a trial that ends in one of these by creating it again —
+#: a new pod, a clean checkout, a full agent budget — and deletes the failed
+#: attempt's directory. Names, not classes: ``--retry-include`` compares
+#: ``type(exc).__name__``, and Harbor's default exclusions (``AgentTimeoutError``
+#: and the like) stay in force, so a rollout that ran out of budget is a result.
+INFRA_RETRY_EXCEPTIONS = (
+    "SandboxInfraError",
+    "SandboxGone",
+    "EnvironmentStartTimeoutError",
+)
+
+#: Fresh-pod reruns per trial. Matches ``rollout_retries`` on the native path.
+DEFAULT_INFRA_RETRIES = 2
+
 #: Reasoning effort for Harbor's ``claude-code``, which reaches its ``--effort``
 #: flag through ``CliFlag.env_fallback`` — so this is read by the *harbor*
 #: process, not by anything in the pod, and cannot be set from
@@ -134,6 +151,9 @@ class HarborRunSpec:
     job_name: str = ""
     n_concurrent: int = 8
     n_attempts: int = 1
+    #: Reruns, in a new pod, of a trial whose sandbox failed under it. See
+    #: :data:`INFRA_RETRY_EXCEPTIONS`; ``0`` leaves Harbor's retries off.
+    infra_retries: int = DEFAULT_INFRA_RETRIES
     #: ``--include-task-name``; repeatable upstream, so a list here.
     include_tasks: list[str] = field(default_factory=list)
     exclude_tasks: list[str] = field(default_factory=list)
@@ -241,6 +261,15 @@ class HarborRunSpec:
         argv += ["--n-concurrent", str(self.n_concurrent)]
         if self.n_attempts != 1:
             argv += ["--n-attempts", str(self.n_attempts)]
+        # A retry policy passed through by hand is the caller's whole policy,
+        # so ours is not mixed into it.
+        caller_set_retries = any(
+            self._passthrough(flag) is not None for flag in ("--max-retries", "-r")
+        )
+        if self.infra_retries > 0 and not caller_set_retries:
+            argv += ["--max-retries", str(self.infra_retries)]
+            for name in INFRA_RETRY_EXCEPTIONS:
+                argv += ["--retry-include", name]
         if self.n_tasks is not None:
             argv += ["--n-tasks", str(self.n_tasks)]
         for name in self.include_tasks:
@@ -268,6 +297,13 @@ class TrialOutcome:
     #: The trial's own ``started_at`` / ``finished_at``, when Harbor recorded them.
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    #: The agent's prompt and completion tokens, summed over its LLM calls, from
+    #: ``agent_result``. Prompt tokens count every call's whole context again,
+    #: cached or not, so they grow with the square of the turn count.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    #: The directory the trial's ``result.json`` was read from.
+    trial_dir: Path | None = None
 
     @property
     def solved(self) -> bool:
@@ -305,6 +341,11 @@ class TrialOutcome:
         # back with its transcript and diff intact.
         if "in-pod deadline" in lowered:
             return "TIMEOUT"
+        # The sandbox failed under every attempt Harbor was allowed to make.
+        # Early, because the cause it quotes is a transport error and may well
+        # say "timed out" or name the network.
+        if "sandboxinfraerror" in lowered:
+            return "SANDBOX_INFRA"
         # Checked before the substring rules below: an agent's own command line
         # routinely contains the word "build", which read as a build failure.
         if "nonzeroagentexitcode" in lowered or "agent exited" in lowered:
@@ -511,6 +552,7 @@ def _to_outcome(data: dict, results_path: Path) -> TrialOutcome:
     }
     reward = _primary_reward(rewards)
     exit_code = _agent_exit_code(results_path.parent)
+    input_tokens, output_tokens = agent_tokens(data)
 
     exception = data.get("exception_info") or {}
     error = None
@@ -530,7 +572,29 @@ def _to_outcome(data: dict, results_path: Path) -> TrialOutcome:
         rewards=rewards,
         started_at=_timestamp(data.get("started_at")),
         finished_at=_timestamp(data.get("finished_at")),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        trial_dir=results_path.parent,
     )
+
+
+def agent_tokens(data: dict) -> tuple[int | None, int | None]:
+    """``(input, output)`` tokens out of a trial ``result.json``, when recorded.
+
+    Harbor fills ``agent_result`` from the agent's own accounting; an agent
+    that keeps none, like the patch replay of a re-grade, leaves both None.
+    """
+    agent = data.get("agent_result")
+    if not isinstance(agent, dict):
+        return None, None
+
+    def count(key: str) -> int | None:
+        value = agent.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return int(value)
+
+    return count("n_input_tokens"), count("n_output_tokens")
 
 
 def _agent_exit_code(trial_dir: Path) -> int | None:
@@ -598,6 +662,7 @@ _CATEGORY_HELP = {
     "UNSUPPORTED_COMPOSE": "multi-container task; one sandbox cannot serve it",
     "UNSUPPORTED_NETWORK": "task requires no-network; egress is fixed at create",
     "SANDBOX_GONE": "the pod was reaped mid-trial — usually SANDBOX_TTL_HOURS",
+    "SANDBOX_INFRA": "the sandbox or orchestrator failed on every attempt — see --infra-retries",
     "UNSUPPORTED_GPU": "task requires a GPU",
     "TIMEOUT": "agent or verifier ran out of time",
     "REWARD_ZERO": "solution ran but the verifier scored it zero",

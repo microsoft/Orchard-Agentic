@@ -41,6 +41,13 @@
 #     ./scripts/run_all_evals.sh <TAG> <MODEL> all swebench-pro-v2
 #     ./scripts/run_all_evals.sh <TAG> <MODEL> all everything
 #
+# PRO_V2_HARD51=1 narrows swebench-pro-v2 to upstream's HARD-51 subset — the 51
+# tasks at least two of five frontier families failed — in both the agent and
+# the re-grade passes. It writes to <harness>-swebench-pro-v2-hard51 rather than
+# <harness>-swebench-pro-v2, so it never lands on top of a full V2 run:
+#
+#     PRO_V2_HARD51=1 ./scripts/run_all_evals.sh <TAG> <MODEL> all swebench-pro-v2
+#
 # For harnesses, `all` is mini-swe-agent, pi and codex. claude-code is opt-in for
 # the same reason: a fourth harness across seven benchmarks is 8 more stages and
 # the GPU time to match. Ask for it by name, or say `everything`:
@@ -368,6 +375,33 @@ else
     export SUFFIX=""
 fi
 
+# $TEMPERATURE is the sampling temperature mini-swe-agent sends with every
+# request, in its native and its Harbor stages alike. Unset, it sends none and
+# the server's default applies: under SGLang's default `--sampling-defaults
+# model` that is the checkpoint's generation_config.json (Qwen3.8-27B: 1.0,
+# with top_p 0.95 and top_k 20). The server's --preferred-sampling-params never
+# reach /v1/chat/completions, so the client is the place to change it:
+#
+#   TEMPERATURE=0.9 ./scripts/run_all_evals.sh <TAG> <MODEL> mini-swe-agent tb2.1
+#
+# pi, codex and claude-code have no temperature setting here and ignore it.
+# Spliced unquoted like $LIMIT_ARG, so both disappear when it is unset.
+if [ -n "${TEMPERATURE:-}" ]; then
+    if ! [[ "$TEMPERATURE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        echo "TEMPERATURE must be a non-negative number; got '$TEMPERATURE'" >&2
+        exit 1
+    fi
+    export MINI_RUN_TEMPERATURE="harness.params.temperature=$TEMPERATURE"
+    export MINI_HARBOR_TEMPERATURE="--ak temperature=$TEMPERATURE"
+    for h in $HARNESSES; do
+        [ "$h" = mini-swe-agent ] || \
+            echo "note: TEMPERATURE applies to mini-swe-agent only; $h keeps the server's default" >&2
+    done
+else
+    export MINI_RUN_TEMPERATURE=""
+    export MINI_HARBOR_TEMPERATURE=""
+fi
+
 banner() {
     echo
     echo "##########################################################################"
@@ -404,7 +438,7 @@ benchmark_label() {
         swebench-multilingual) echo "SWE-bench Multilingual" ;;
         swebench-pro)          echo "SWE-bench Pro" ;;
         swebench-pro-harbor)   echo "SWE-bench Pro (Harbor)" ;;
-        swebench-pro-v2)       echo "SWE-bench Pro V2 (Harbor)" ;;
+        swebench-pro-v2)       echo "SWE-bench Pro V2${PRO_V2_HARD51_LABEL:-} (Harbor)" ;;
         tb2.1)                 echo "Terminal-Bench 2.1" ;;
         deepswe1.1)            echo "DeepSWE 1.1" ;;
         *)                     echo "$1" ;;
@@ -445,7 +479,7 @@ unset OPENAI_BASE_URL OPENAI_API_BASE OPENAI_API_KEY MSWEA_API_KEY
 unset ANTHROPIC_BASE_URL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL \
       CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
 
-banner "$MODEL_TAG  ->  $OUT   harnesses: $HARNESSES   benchmarks: $BENCHMARKS"
+banner "$MODEL_TAG  ->  $OUT   harnesses: $HARNESSES   benchmarks: $BENCHMARKS${TEMPERATURE:+   temperature: $TEMPERATURE}"
 
 
 # ===========================================================================
@@ -459,6 +493,7 @@ $PTY orchard-eval run -c configs/mini-swe-agent.yaml \
   --base-url-replicas "$REPLICAS" --routing "$MODEL_ROUTING" \
   --concurrency "$CONCURRENCY" \
   $LIMIT_ARG \
+  $MINI_RUN_TEMPERATURE \
   2>&1 | tee "$LOGS/mini-swe-agent-swebench-verified$SUFFIX-$RUN_ID.log"
 
 stage "2/32" pi swebench-verified && \
@@ -508,6 +543,7 @@ $PTY orchard-eval run -c configs/mini-swe-agent.yaml -c configs/swe-bench-multil
   --base-url-replicas "$REPLICAS" --routing "$MODEL_ROUTING" \
   --concurrency "$CONCURRENCY" \
   $LIMIT_ARG \
+  $MINI_RUN_TEMPERATURE \
   2>&1 | tee "$LOGS/mini-swe-agent-swebench-multilingual$SUFFIX-$RUN_ID.log"
 
 stage "6/32" pi swebench-multilingual && \
@@ -552,6 +588,7 @@ $PTY orchard-eval run -c configs/mini-swe-agent.yaml -c configs/swebench-pro.yam
   --base-url-replicas "$REPLICAS" --routing "$MODEL_ROUTING" \
   --concurrency "$CONCURRENCY" \
   $LIMIT_ARG \
+  $MINI_RUN_TEMPERATURE \
   2>&1 | tee "$LOGS/mini-swe-agent-swebench-pro$SUFFIX-$RUN_ID.log"
 
 stage "10/32" pi swebench-pro && \
@@ -665,6 +702,7 @@ $PTY orchard-eval harbor -d scale-ai/swe-bench-pro@2 \
   $LIMIT_ARG \
   -- --agent-timeout-multiplier "$AGENT_TIMEOUT_MULTIPLIER" \
      --override-cpus 4 --override-memory-mb 16384 \
+     $MINI_HARBOR_TEMPERATURE \
   2>&1 | tee "$LOGS/mini-swe-agent-swebench-pro-harbor$SUFFIX-$RUN_ID.log"
 
 stage "14/32" pi swebench-pro-harbor && \
@@ -809,6 +847,29 @@ PRO_V2_REGRADE_CONCURRENCY="${PRO_V2_REGRADE_CONCURRENCY:-$((CONCURRENCY * 3))}"
 PRO_V2_REGRADE_CPUS="${PRO_V2_REGRADE_CPUS:-$(( PRO_V2_CPUS / 2 > 1 ? PRO_V2_CPUS / 2 : 1 ))}"
 PRO_V2_REGRADE_MEMORY_MB="${PRO_V2_REGRADE_MEMORY_MB:-$(( PRO_V2_MEMORY_MB / 2 > 4096 ? PRO_V2_MEMORY_MB / 2 : 4096 ))}"
 
+# Set PRO_V2_HARD51=1 to run only upstream's HARD-51 subset, the number to
+# report while the full set no longer separates models. The subset goes to the
+# re-grade as well as to the agent pass, and has to: the re-grade finds no
+# patch for the other 591 tasks, and a task with no patch is not skipped — it
+# scores zero, which would put HARD-51's solves over a denominator of 642.
+#
+# The subset is a directory of 51 symlinks (stage_task_subset.sh), not a
+# --task-file: Harbor's name filter resolves every task path once per pattern,
+# 642 x 51 lookups at ~22 ms each on /data, which is 11-12 minutes of setup on
+# every pass. Trials resolve the links, so they grade exactly as before.
+#
+# The job directories become <harness>-swebench-pro-v2-hard51[-regrade], which
+# results_table.py reads as columns of their own rather than as the full set's.
+PRO_V2_HARD51="${PRO_V2_HARD51:-0}"
+PRO_V2_HARD51_FILE="$PRO_V2_DIR/v2/hard51_ids.txt"
+if [ "$PRO_V2_HARD51" = 1 ]; then
+    PRO_V2_RUN="swebench-pro-v2-hard51"
+    PRO_V2_HARD51_LABEL=" HARD-51"
+else
+    PRO_V2_RUN="swebench-pro-v2"
+    PRO_V2_HARD51_LABEL=""
+fi
+
 # Fail early and loudly rather than eight stages deep. Only when V2 was asked
 # for: this block is evaluated on every run.
 case " $BENCHMARKS " in
@@ -819,12 +880,24 @@ case " $BENCHMARKS " in
             echo "Fetch and verify it first:  ./scripts/fetch_swebench_pro_v2.sh" >&2
             exit 1
         fi
+        if [ "$PRO_V2_HARD51" = 1 ]; then
+            if [ ! -s "$PRO_V2_HARD51_FILE" ]; then
+                echo "PRO_V2_HARD51=1 but there is no HARD-51 list at:" >&2
+                echo "  $PRO_V2_HARD51_FILE" >&2
+                exit 1
+            fi
+            # The leaf is named `tasks` like the full tree's, since Harbor
+            # records that basename as the trials' dataset name.
+            bash scripts/stage_task_subset.sh \
+                "$PRO_V2_TASKS" "$PRO_V2_HARD51_FILE" "$PRO_V2_DIR/v2/hard51/tasks" || exit 1
+            PRO_V2_TASKS="$PRO_V2_DIR/v2/hard51/tasks"
+        fi
         ;;
 esac
 
 # `harbor run --ak source_job=<dir>` wants the attempt directory — the one
 # holding instance_*/ — which is exactly jobs-dir/job-name.
-pro_v2_job_dir() { echo "$OUT/harbor/$1-swebench-pro-v2$SUFFIX/$RUN_ID"; }
+pro_v2_job_dir() { echo "$OUT/harbor/$1-$PRO_V2_RUN$SUFFIX/$RUN_ID"; }
 
 # Refuse to replay a job that is not finished. The stages below are sequential,
 # so the agent pass has returned by the time its re-grade starts — but `stage`
@@ -878,11 +951,12 @@ $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent mini-swe-agent --model "openai/$MODEL_NAME" -n "$CONCURRENCY" \
   --base-url "$MODEL_BASE_URL" --base-url-replicas "$REPLICAS" \
   --routing "$MODEL_ROUTING" \
-  --jobs-dir "$OUT/harbor/mini-swe-agent-swebench-pro-v2$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/mini-swe-agent-$PRO_V2_RUN$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --agent-timeout-multiplier "$PRO_V2_AGENT_TIMEOUT_MULTIPLIER" \
      --override-cpus "$PRO_V2_CPUS" --override-memory-mb "$PRO_V2_MEMORY_MB" \
-  2>&1 | tee "$LOGS/mini-swe-agent-swebench-pro-v2$SUFFIX-$RUN_ID.log"
+     $MINI_HARBOR_TEMPERATURE \
+  2>&1 | tee "$LOGS/mini-swe-agent-$PRO_V2_RUN$SUFFIX-$RUN_ID.log"
 
 [ "$PRO_V2_REGRADE" = 1 ] && \
 stage "18/32" mini-swe-agent swebench-pro-v2 re-grade && \
@@ -893,11 +967,11 @@ ORCHARD_HARBOR_MODEL_EGRESS=0 \
 PYTHONPATH="$PRO_V2_DIR/v2/tooling${PYTHONPATH:+:$PYTHONPATH}" \
 $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent patch_replay:PatchReplayAgent --model replay -n "$PRO_V2_REGRADE_CONCURRENCY" \
-  --jobs-dir "$OUT/harbor/mini-swe-agent-swebench-pro-v2-regrade$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/mini-swe-agent-$PRO_V2_RUN-regrade$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --ak "source_job=$(pro_v2_job_dir mini-swe-agent)" \
      --override-cpus "$PRO_V2_REGRADE_CPUS" --override-memory-mb "$PRO_V2_REGRADE_MEMORY_MB" \
-  2>&1 | tee "$LOGS/mini-swe-agent-swebench-pro-v2-regrade$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/mini-swe-agent-$PRO_V2_RUN-regrade$SUFFIX-$RUN_ID.log"
 
 stage "19/32" pi swebench-pro-v2 && \
 ORCHARD_HARBOR_EXEC_TIMEOUT=7200 \
@@ -906,11 +980,11 @@ $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent pi --model orchard/orchard-model -n "$CONCURRENCY" \
   --base-url "$MODEL_BASE_URL" --base-url-replicas "$REPLICAS" \
   --routing "$MODEL_ROUTING" \
-  --jobs-dir "$OUT/harbor/pi-swebench-pro-v2$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/pi-$PRO_V2_RUN$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --agent-timeout-multiplier "$PRO_V2_AGENT_TIMEOUT_MULTIPLIER" \
      --override-cpus "$PRO_V2_CPUS" --override-memory-mb "$PRO_V2_MEMORY_MB" \
-  2>&1 | tee "$LOGS/pi-swebench-pro-v2$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/pi-$PRO_V2_RUN$SUFFIX-$RUN_ID.log"
 
 [ "$PRO_V2_REGRADE" = 1 ] && \
 stage "20/32" pi swebench-pro-v2 re-grade && \
@@ -921,11 +995,11 @@ ORCHARD_HARBOR_MODEL_EGRESS=0 \
 PYTHONPATH="$PRO_V2_DIR/v2/tooling${PYTHONPATH:+:$PYTHONPATH}" \
 $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent patch_replay:PatchReplayAgent --model replay -n "$PRO_V2_REGRADE_CONCURRENCY" \
-  --jobs-dir "$OUT/harbor/pi-swebench-pro-v2-regrade$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/pi-$PRO_V2_RUN-regrade$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --ak "source_job=$(pro_v2_job_dir pi)" \
      --override-cpus "$PRO_V2_REGRADE_CPUS" --override-memory-mb "$PRO_V2_REGRADE_MEMORY_MB" \
-  2>&1 | tee "$LOGS/pi-swebench-pro-v2-regrade$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/pi-$PRO_V2_RUN-regrade$SUFFIX-$RUN_ID.log"
 
 stage "21/32" codex swebench-pro-v2 && \
 ORCHARD_HARBOR_EXEC_TIMEOUT=7200 \
@@ -934,12 +1008,12 @@ $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent codex --model "openai/$MODEL_NAME" -n "$CONCURRENCY" \
   --base-url "$MODEL_BASE_URL" --base-url-replicas "$REPLICAS" \
   --routing "$MODEL_ROUTING" \
-  --jobs-dir "$OUT/harbor/codex-swebench-pro-v2$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/codex-$PRO_V2_RUN$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --agent-timeout-multiplier "$PRO_V2_AGENT_TIMEOUT_MULTIPLIER" \
      --ak "$CODEX_EFFORT_AK" \
      --override-cpus "$PRO_V2_CPUS" --override-memory-mb "$PRO_V2_MEMORY_MB" \
-  2>&1 | tee "$LOGS/codex-swebench-pro-v2$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/codex-$PRO_V2_RUN$SUFFIX-$RUN_ID.log"
 
 [ "$PRO_V2_REGRADE" = 1 ] && \
 stage "22/32" codex swebench-pro-v2 re-grade && \
@@ -950,11 +1024,11 @@ ORCHARD_HARBOR_MODEL_EGRESS=0 \
 PYTHONPATH="$PRO_V2_DIR/v2/tooling${PYTHONPATH:+:$PYTHONPATH}" \
 $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent patch_replay:PatchReplayAgent --model replay -n "$PRO_V2_REGRADE_CONCURRENCY" \
-  --jobs-dir "$OUT/harbor/codex-swebench-pro-v2-regrade$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/codex-$PRO_V2_RUN-regrade$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --ak "source_job=$(pro_v2_job_dir codex)" \
      --override-cpus "$PRO_V2_REGRADE_CPUS" --override-memory-mb "$PRO_V2_REGRADE_MEMORY_MB" \
-  2>&1 | tee "$LOGS/codex-swebench-pro-v2-regrade$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/codex-$PRO_V2_RUN-regrade$SUFFIX-$RUN_ID.log"
 
 stage "23/32" claude-code swebench-pro-v2 && \
 ORCHARD_HARBOR_EXEC_TIMEOUT=7200 \
@@ -963,11 +1037,11 @@ $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent claude-code --model "anthropic/$MODEL_NAME" -n "$CONCURRENCY" \
   --base-url "$MODEL_BASE_URL" --base-url-replicas "$REPLICAS" \
   --routing "$MODEL_ROUTING" \
-  --jobs-dir "$OUT/harbor/claude-code-swebench-pro-v2$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/claude-code-$PRO_V2_RUN$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --agent-timeout-multiplier "$PRO_V2_AGENT_TIMEOUT_MULTIPLIER" \
      --override-cpus "$PRO_V2_CPUS" --override-memory-mb "$PRO_V2_MEMORY_MB" \
-  2>&1 | tee "$LOGS/claude-code-swebench-pro-v2$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/claude-code-$PRO_V2_RUN$SUFFIX-$RUN_ID.log"
 
 [ "$PRO_V2_REGRADE" = 1 ] && \
 stage "24/32" claude-code swebench-pro-v2 re-grade && \
@@ -978,11 +1052,11 @@ ORCHARD_HARBOR_MODEL_EGRESS=0 \
 PYTHONPATH="$PRO_V2_DIR/v2/tooling${PYTHONPATH:+:$PYTHONPATH}" \
 $PTY orchard-eval harbor -p "$PRO_V2_TASKS" \
   --agent patch_replay:PatchReplayAgent --model replay -n "$PRO_V2_REGRADE_CONCURRENCY" \
-  --jobs-dir "$OUT/harbor/claude-code-swebench-pro-v2-regrade$SUFFIX" --job-name "$RUN_ID" \
+  --jobs-dir "$OUT/harbor/claude-code-$PRO_V2_RUN-regrade$SUFFIX" --job-name "$RUN_ID" \
   $LIMIT_ARG \
   -- --ak "source_job=$(pro_v2_job_dir claude-code)" \
      --override-cpus "$PRO_V2_REGRADE_CPUS" --override-memory-mb "$PRO_V2_REGRADE_MEMORY_MB" \
-  2>&1 | tee "$LOGS/claude-code-swebench-pro-v2-regrade$SUFFIX-$RUN_ID.log"
+  2>&1 | tee "$LOGS/claude-code-$PRO_V2_RUN-regrade$SUFFIX-$RUN_ID.log"
 
 
 # ===========================================================================
@@ -1012,6 +1086,7 @@ $PTY orchard-eval harbor -d terminal-bench/terminal-bench-2-1@latest \
   $LIMIT_ARG \
   -- --agent-timeout-multiplier "$TB21_AGENT_TIMEOUT_MULTIPLIER" \
      --override-cpus 8 --override-memory-mb 32768 \
+     $MINI_HARBOR_TEMPERATURE \
   2>&1 | tee "$LOGS/mini-swe-agent-tb2.1$SUFFIX-$RUN_ID.log"
 
 # pi resolves the endpoint from its staged in-pod config, so the model string is
@@ -1113,6 +1188,7 @@ $PTY orchard-eval harbor -d datacurve/deep-swe-1-1@latest \
   $LIMIT_ARG \
   -- --override-cpus 8 --override-memory-mb 32768 \
      --agent-timeout-multiplier "$AGENT_TIMEOUT_MULTIPLIER" \
+     $MINI_HARBOR_TEMPERATURE \
   2>&1 | tee "$LOGS/mini-swe-agent-deepswe1.1$SUFFIX-$RUN_ID.log"
 
 stage "30/32" pi deepswe1.1 && \

@@ -40,6 +40,10 @@ SUBMISSION_SENTINEL = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
 #: mini-swe-agent's own SWE-bench config, used unless overridden.
 DEFAULT_CONFIG_SPEC = "benchmarks/swebench.yaml"
 
+#: Seconds one bash command may run before mini kills it. Long enough for a
+#: compiled language's build and test run, and the same as the Harbor path.
+DEFAULT_STEP_TIMEOUT_S = 120
+
 #: Writable state directory for mini inside the sandbox. mini creates its global
 #: config dir at *import* time, so pointing ``MSWEA_GLOBAL_CONFIG_DIR`` here is
 #: what keeps the CLI working in images whose HOME is read-only or absent.
@@ -149,7 +153,13 @@ class MiniSweAgentHarness(InstalledCliHarness):
         Extra specs merged *over* that config, e.g.
         ``["agent.step_limit=100", "agent.cost_limit=2.0"]``.
     ``step_timeout``
-        Seconds for a single bash command inside the sandbox (default 60).
+        Seconds for a single bash command inside the sandbox (default 120,
+        the same as ``harbor_orchard.agents.MiniSweAgent``).
+    ``temperature``
+        Sampling temperature mini sends with every request. Unset, it sends
+        none and the server's default applies — for a model served with
+        SGLang's default ``--sampling-defaults model``, the checkpoint's
+        ``generation_config.json``.
 
     When the pod's tools image is older than the bundled ``mini``, the CLI is
     installed into the pod on first use — see :data:`MINI_INSTALL_COMMAND` and
@@ -240,7 +250,7 @@ class MiniSweAgentHarness(InstalledCliHarness):
         return {
             **super()._substitutions(ctx),
             "config": str(self.params.get("config") or DEFAULT_CONFIG_SPEC),
-            "step_timeout": str(self.params.get("step_timeout", 60)),
+            "step_timeout": str(self.params.get("step_timeout", DEFAULT_STEP_TIMEOUT_S)),
             # Empty without a base_url, which drops the whole `-c` group: mini
             # would otherwise fail on a config file that was never staged.
             "model_config": (
@@ -252,6 +262,12 @@ class MiniSweAgentHarness(InstalledCliHarness):
 
     def _extra_args(self) -> list[str]:
         overrides: list[str] = []
+        temperature = self.params.get("temperature")
+        if temperature not in (None, ""):
+            # Ahead of config_overrides, so a temperature set there still wins.
+            overrides.extend(
+                ["-c", f"model.model_kwargs.temperature={float(temperature)}"]
+            )
         for override in self.params.get("config_overrides") or []:
             overrides.extend(["-c", shlex.quote(str(override))])
         # Last wins in mini's merge, so user overrides come after everything the

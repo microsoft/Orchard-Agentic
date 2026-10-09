@@ -50,6 +50,7 @@ from orchard_evalkit.grading.swebench_pro import (
     grade_swebench_pro_patch,
 )
 from orchard_evalkit.harnesses import Harness, RolloutContext, build_harness
+from orchard_evalkit.jobs import JobClient
 from orchard_evalkit.models import (
     EXIT_INFRA_ERROR,
     EXIT_TIMEOUT,
@@ -123,6 +124,8 @@ class EvalRunner:
         self._total = 0
         self._progress_lock = asyncio.Lock()
         self._started_at = 0.0
+        #: Runs every sandbox command of this run; built in :meth:`run`.
+        self._jobs: JobClient | None = None
 
     # ------------------------------------------------------------------
 
@@ -186,10 +189,19 @@ class EvalRunner:
             api_key=cfg.sandbox.api_key,
             prefix=cfg.sandbox.prefix,
         ) as client:
-            results = await asyncio.gather(
-                *(self._run_guarded(client, inst) for inst in pending),
-                return_exceptions=True,
-            )
+            # Commands go through the job client rather than the SDK's exec,
+            # which re-sends a command whose connection dropped — a second
+            # agent CLI on the first one's tree. Built from the SDK client so
+            # both resolve the same orchestrator and key.
+            self._jobs = JobClient(client.base_url, api_key=client.api_key)
+            try:
+                results = await asyncio.gather(
+                    *(self._run_guarded(client, inst) for inst in pending),
+                    return_exceptions=True,
+                )
+            finally:
+                await self._jobs.close()
+                self._jobs = None
 
         records = list(existing.values())
         for instance, result in zip(pending, results, strict=True):
@@ -472,6 +484,7 @@ class EvalRunner:
             workdir=instance.workdir,
             loop=asyncio.get_running_loop(),
             default_timeout=cfg.sandbox.command_timeout,
+            jobs=self._jobs,
         )
 
         setup_started = time.monotonic()
@@ -545,6 +558,7 @@ class EvalRunner:
                 workdir=instance.workdir,
                 loop=asyncio.get_running_loop(),
                 default_timeout=cfg.sandbox.command_timeout,
+                jobs=self._jobs,
             )
             grade_started = time.monotonic()
             grade = await self._grade(sandbox, instance, patch, artifacts_dir)

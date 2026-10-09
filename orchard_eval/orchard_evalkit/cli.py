@@ -284,6 +284,7 @@ def _cmd_harbor(args: argparse.Namespace) -> int:
         job_name=args.job_name,
         n_concurrent=args.concurrency,
         n_attempts=args.attempts,
+        infra_retries=args.infra_retries,
         include_tasks=args.task + _read_task_files(args.task_file),
         exclude_tasks=args.exclude_task
         + _read_task_files(args.exclude_task_file, "--exclude-task-file"),
@@ -399,6 +400,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _build_harbor_parser(subparsers: argparse._SubParsersAction) -> None:
+    from orchard_evalkit.harbor_bridge import DEFAULT_INFRA_RETRIES
+
     parser = subparsers.add_parser(
         "harbor",
         help="Run a Harbor dataset (terminal-bench, ...) on Orchard sandboxes",
@@ -466,6 +469,17 @@ def _build_harbor_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("-n", "--concurrency", type=int, default=8)
     parser.add_argument(
         "-k", "--attempts", type=int, default=1, help="Trials per task"
+    )
+    parser.add_argument(
+        "--infra-retries",
+        type=int,
+        default=DEFAULT_INFRA_RETRIES,
+        help=(
+            "Rerun a trial whose sandbox or orchestrator failed under it, as a "
+            "new trial in a new pod, up to this many times. Agent timeouts and "
+            "agent errors are results and are never rerun. 0 disables. "
+            "Default: %(default)s"
+        ),
     )
     parser.add_argument("--task", action="append", default=[], help="Only this task. Repeatable")
     parser.add_argument(

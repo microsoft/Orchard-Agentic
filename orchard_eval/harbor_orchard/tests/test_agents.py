@@ -15,6 +15,7 @@ import stat
 import subprocess
 
 import pytest
+import yaml
 
 pytest.importorskip("harbor", reason="Harbor is not installed")
 
@@ -295,6 +296,83 @@ class TestVersionReporting:
         # to find a version in it or the label is the whole line.
         agent = _agent(MiniSweAgent)
         assert agent.parse_version("mini     2.4.6") == "2.4.6"
+
+
+class TestStepTimeout:
+    """mini's per-command timeout is 120s, not the 30s of its bundled config.
+
+    The setting rides on the ``config`` mapping Harbor writes to a file and
+    layers over ``-c mini``, so it lands in ``environment.timeout`` without
+    disturbing anything else the bundled config sets.
+    """
+
+    @staticmethod
+    def _config(tmp_path, **kwargs) -> dict:
+        agent = MiniSweAgent(logs_dir=tmp_path, model_name="openai/m", **kwargs)
+        return yaml.safe_load(agent._config_yaml) if agent._config_yaml else {}
+
+    def test_it_is_120s_by_default(self, tmp_path):
+        assert self._config(tmp_path) == {"environment": {"timeout": 120}}
+
+    def test_it_can_be_set_per_run(self, tmp_path):
+        # `--ak step_timeout=600` arrives as an int: Harbor JSON-parses values.
+        assert self._config(tmp_path, step_timeout=600)["environment"]["timeout"] == 600
+
+    def test_zero_keeps_minis_own(self, tmp_path):
+        assert self._config(tmp_path, step_timeout=0) == {}
+
+    def test_a_config_that_sets_it_wins_and_keeps_the_rest(self, tmp_path):
+        config = {"environment": {"timeout": 45}, "agent": {"step_limit": 250}}
+        assert self._config(tmp_path, config=config) == config
+
+    def test_a_config_without_it_gets_it(self, tmp_path):
+        assert self._config(tmp_path, config={"agent": {"step_limit": 250}}) == {
+            "agent": {"step_limit": 250},
+            "environment": {"timeout": 120},
+        }
+
+    def test_a_config_file_is_left_alone(self, tmp_path):
+        # Harbor takes a file or a mapping, never both, so there is nothing to
+        # merge into: the file is the caller's whole config.
+        path = tmp_path / "mini.yaml"
+        path.write_text("agent:\n  step_limit: 250\n")
+        assert self._config(tmp_path, config_file=str(path)) == {
+            "agent": {"step_limit": 250}
+        }
+
+
+class TestTemperature:
+    """``--ak temperature=T`` becomes a value litellm sends with every request."""
+
+    @staticmethod
+    def _config(tmp_path, **kwargs) -> dict:
+        agent = MiniSweAgent(logs_dir=tmp_path, model_name="openai/m", **kwargs)
+        return yaml.safe_load(agent._config_yaml) if agent._config_yaml else {}
+
+    def test_none_is_sent_by_default(self, tmp_path):
+        assert "model" not in self._config(tmp_path)
+
+    def test_it_lands_in_model_kwargs_beside_the_step_timeout(self, tmp_path):
+        assert self._config(tmp_path, temperature=0.9) == {
+            "environment": {"timeout": 120},
+            "model": {"model_kwargs": {"temperature": 0.9}},
+        }
+
+    def test_a_config_that_sets_it_wins_and_keeps_the_rest(self, tmp_path):
+        config = {"model": {"model_kwargs": {"temperature": 0.7, "top_p": 0.95}}}
+        result = self._config(tmp_path, temperature=0.9, config=config)
+        assert result["model"] == config["model"]
+
+    def test_it_cannot_be_combined_with_a_config_file(self, tmp_path):
+        path = tmp_path / "mini.yaml"
+        path.write_text("agent:\n  step_limit: 250\n")
+        with pytest.raises(ValueError, match="config_file"):
+            MiniSweAgent(
+                logs_dir=tmp_path,
+                model_name="openai/m",
+                temperature=0.9,
+                config_file=str(path),
+            )
 
 
 class TestAgentDeadlineShim:

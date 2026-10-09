@@ -38,8 +38,9 @@ harness:
     config_overrides:
       - agent.step_limit=250
       - agent.cost_limit=3.0
-    # Seconds for a single bash command inside the sandbox.
-    step_timeout: 60
+    # Seconds for a single bash command inside the sandbox. Long enough for a
+    # compiled language's test suite; the Harbor path uses the same.
+    step_timeout: 120
     # `mini` ships in the sandbox tools image. On a pod whose image predates it,
     # install it into an isolated venv in the pod on first use (needs egress).
     # Set false to fail fast instead of paying for the install on every pod.

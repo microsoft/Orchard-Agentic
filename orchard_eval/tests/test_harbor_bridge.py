@@ -11,6 +11,7 @@ import pytest
 from orchard_evalkit.cli import build_parser
 from orchard_evalkit.harbor_bridge import (
     AGENT_ALIASES,
+    INFRA_RETRY_EXCEPTIONS,
     STOCK_AGENTS_ENV,
     HarborRunSpec,
     TrialOutcome,
@@ -222,6 +223,68 @@ class TestFailureCategory:
         assert outcome.failure_category == "TIMEOUT"
 
 
+    def test_a_sandbox_that_failed_every_attempt_is_infra(self):
+        # The cause quotes a transport error, which says "timed out" often
+        # enough that the TIMEOUT rule would otherwise claim it.
+        outcome = TrialOutcome(
+            task="t",
+            trial="t__1",
+            reward=None,
+            error=(
+                "SandboxInfraError: the sandbox for t__1__env (sandbox 600967f6) "
+                "failed under the trial: JobWaitError: lost the orchestrator for "
+                "300s: ServerTimeoutError: timed out"
+            ),
+        )
+        assert outcome.failure_category == "SANDBOX_INFRA"
+
+
+class TestInfraRetries:
+    """A trial whose sandbox failed is rerun in a new pod, never in the old one.
+
+    The rerun is Harbor's own: ``--max-retries`` creates the trial again, which
+    starts a new environment, and ``--retry-include`` limits that to the
+    exceptions that mean the sandbox failed.
+    """
+
+    @staticmethod
+    def _retry_flags(argv):
+        includes = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--retry-include"]
+        retries = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--max-retries"]
+        return retries, includes
+
+    def test_infra_failures_are_retried_by_default(self):
+        retries, includes = self._retry_flags(HarborRunSpec(dataset="d/s@1").command())
+        assert retries == ["2"]
+        assert includes == list(INFRA_RETRY_EXCEPTIONS)
+
+    def test_only_infra_failures_are_named(self):
+        # Anything named here is rerun; an agent timeout or an agent error is a
+        # result, and rerunning it would turn pass@1 into best-of-n.
+        for name in ("AgentTimeoutError", "NonZeroAgentExitCodeError"):
+            assert name not in INFRA_RETRY_EXCEPTIONS
+        assert "SandboxInfraError" in INFRA_RETRY_EXCEPTIONS
+
+    def test_zero_turns_it_off(self):
+        argv = HarborRunSpec(dataset="d/s@1", infra_retries=0).command()
+        assert self._retry_flags(argv) == ([], [])
+
+    def test_a_policy_passed_through_is_left_whole(self):
+        argv = HarborRunSpec(
+            dataset="d/s@1", extra_args=["--max-retries", "5"]
+        ).command()
+        assert self._retry_flags(argv) == (["5"], [])
+
+    def test_the_short_spelling_counts_as_a_policy_too(self):
+        argv = HarborRunSpec(dataset="d/s@1", extra_args=["-r", "1"]).command()
+        assert "--max-retries" not in argv
+
+    def test_the_cli_flag_reaches_the_spec(self):
+        args = build_parser().parse_args(["harbor", "-d", "d/s@1", "--infra-retries", "1"])
+        assert args.infra_retries == 1
+        assert build_parser().parse_args(["harbor", "-d", "d/s@1"]).infra_retries == 2
+
+
 class TestAgentSubstitution:
     """Which agent class Harbor is actually told to load.
 
@@ -379,3 +442,23 @@ class TestCollectOutcomes:
         a, b = collect_outcomes(tmp_path)
         assert (a.finished_at - a.started_at).total_seconds() == pytest.approx(1564.3, abs=0.1)
         assert b.started_at is None and b.finished_at is None
+
+    def test_keeps_the_agents_tokens_and_its_directory(self, tmp_path):
+        from orchard_evalkit.harbor_bridge import collect_outcomes
+
+        _write_trial(
+            tmp_path,
+            "a__1",
+            agent_result={"n_input_tokens": 9198733, "n_output_tokens": 76127},
+        )
+        # A patch replay keeps no accounting of its own.
+        _write_trial(
+            tmp_path,
+            "b__2",
+            agent_result={"n_input_tokens": None, "n_output_tokens": None},
+        )
+
+        a, b = collect_outcomes(tmp_path)
+        assert (a.input_tokens, a.output_tokens) == (9198733, 76127)
+        assert (b.input_tokens, b.output_tokens) == (None, None)
+        assert a.trial_dir == tmp_path / "a__1"

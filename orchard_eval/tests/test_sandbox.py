@@ -4,8 +4,20 @@ import asyncio
 
 import pytest
 
-from orchard_evalkit.sandbox import EvalSandbox, SandboxCommandError, SandboxGoneError
-from tests.fakes import FakeJobResult, FakeResponseError, FakeSandboxInstance
+from orchard_evalkit.jobs import ExecDispatchError
+from orchard_evalkit.sandbox import (
+    EvalSandbox,
+    SandboxCommandError,
+    SandboxGoneError,
+    SandboxUnusableError,
+    is_sandbox_failure,
+)
+from tests.fakes import (
+    FakeJobClient,
+    FakeJobResult,
+    FakeResponseError,
+    FakeSandboxInstance,
+)
 
 
 def make_sandbox(responder=None, **kwargs) -> tuple[EvalSandbox, FakeSandboxInstance]:
@@ -94,6 +106,96 @@ class TestVanishedSandbox:
             await sandbox.write_file("x", "/tmp/x")
         with pytest.raises(SandboxGoneError):
             await sandbox.read_file("/tmp/x")
+
+
+class TestSendOnce:
+    """A sandbox that failed under a command gets no second one.
+
+    The SDK's ``exec`` re-sent a command whose connection dropped, which on one
+    SWE-bench Pro V2 run started a second agent CLI in 297 of 613 trials, on
+    the tree the first had already edited. The runner now hands every sandbox
+    a job client that sends once and raises instead, and these pin what
+    happens on this side: the failure reads as the cluster's, so the runner
+    retries the instance in a fresh pod, and this pod is sent nothing more.
+    """
+
+    @pytest.mark.asyncio
+    async def test_commands_go_through_the_job_client(self):
+        instance = FakeSandboxInstance()
+        sandbox = EvalSandbox(
+            instance,
+            workdir="/testbed",
+            default_timeout=77,
+            jobs=FakeJobClient(lambda: [instance]),
+        )
+        await sandbox.exec("echo hi")
+        [call] = instance.commands
+        assert call["command"] == "echo hi"
+        assert call["cwd"] == "/testbed"
+        assert call["timeout"] == 77
+
+    @pytest.mark.asyncio
+    async def test_a_dropped_command_is_the_clusters_failure(self):
+        def responder(cmd):
+            raise ExecDispatchError("POST failed after it was sent")
+
+        sandbox, _ = make_sandbox(responder)
+        with pytest.raises(ExecDispatchError) as caught:
+            await sandbox.exec("mini --task ...")
+        assert is_sandbox_failure(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_nothing_more_is_sent_to_a_sandbox_that_failed(self):
+        # A harness still reads the diff after a failed agent run; in this pod
+        # that would queue behind the orphaned agent.
+        def responder(cmd):
+            if "mini" in cmd:
+                raise ExecDispatchError("dropped")
+            return FakeJobResult()
+
+        sandbox, instance = make_sandbox(responder)
+        with pytest.raises(ExecDispatchError):
+            await sandbox.exec("mini --task ...")
+        with pytest.raises(SandboxUnusableError, match="ExecDispatchError"):
+            await sandbox.extract_patch("abc123")
+        assert len(instance.commands) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_command_that_never_reached_the_pod_is_the_clusters_failure(self):
+        sandbox, _ = make_sandbox(
+            lambda cmd: FakeJobResult(
+                exit_code=None, status="failed", error="No pod IP available"
+            )
+        )
+        with pytest.raises(SandboxUnusableError, match="No pod IP") as caught:
+            await sandbox.exec("mini --task ...")
+        assert is_sandbox_failure(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_a_command_timeout_is_still_a_result(self):
+        sandbox, instance = make_sandbox(
+            lambda cmd: FakeJobResult(
+                exit_code=None, status="failed", error="Execution timed out after 300s"
+            )
+        )
+        result = await sandbox.exec("sleep 9999")
+        assert result.exit_code == -1
+        # The diff a timed-out agent left is still read.
+        await sandbox.exec("git diff")
+        assert len(instance.commands) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_client_side_deadline_does_not_condemn_the_pod(self):
+        def responder(cmd):
+            if "mini" in cmd:
+                raise TimeoutError("Job j1 did not complete within 300s")
+            return FakeJobResult()
+
+        sandbox, instance = make_sandbox(responder)
+        with pytest.raises(TimeoutError):
+            await sandbox.exec("mini --task ...")
+        await sandbox.exec("git diff")
+        assert len(instance.commands) == 2
 
 
 class TestExecSync:
