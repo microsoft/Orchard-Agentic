@@ -80,6 +80,20 @@
         <ol class="updates">
           <li class="update">
             <p>
+              <strong>[2026-10] Self-HPO</strong> — A coding agent co-evolves
+              its harness and policy with no external model: the policy rewrites
+              its own harness from its failures, then RL trains it under that
+              harness. Qwen3.5-35B-A3B improves SWE-Bench Verified from
+              <strong>61.0 to 69.5</strong>, with gains that transfer to unseen
+              benchmarks.
+              <a href="https://arxiv.org/abs/2610.22791" target="_blank" rel="noopener">Paper ↗</a>
+              <a href="https://github.com/MSR-Orchard/Self-HPO" target="_blank" rel="noopener">Code ↗</a>
+              <a href="https://huggingface.co/self-hpo" target="_blank" rel="noopener">Models &amp; data ↗</a>
+              <a href="https://weizhepei.com/blog/self-hpo/" target="_blank" rel="noopener">Blog ↗</a>
+            </p>
+          </li>
+          <li class="update">
+            <p>
               <strong>[2026-09] AutoEnvScaling</strong> — Terminal agents build
               their own RL environments, a step toward recursive
               self-improvement: acting as both proposer and solver,
@@ -162,6 +176,30 @@
         </div>
 
         <div class="project-list">
+          <article class="project-entry">
+            <div>
+              <span class="project-kind">2026-10 · Self-evolving agents</span>
+              <h3>Self-HPO</h3>
+            </div>
+            <div class="project-body">
+              <p>
+                Harness-policy optimization for coding agents: each round, the
+                policy analyzes its own failures to propose a better harness,
+                then RL trains the policy under that harness. The improved
+                policy writes the next harness, so both evolve together.
+              </p>
+              <p class="project-meta">
+                <strong>Topics:</strong> Harness optimization · Reinforcement learning · Recursive self-improvement · Coding agents
+              </p>
+              <p class="project-links">
+                <a href="https://arxiv.org/abs/2610.22791" target="_blank" rel="noopener">Paper ↗</a>
+                <a href="https://github.com/MSR-Orchard/Self-HPO" target="_blank" rel="noopener">Repository ↗</a>
+                <a href="https://huggingface.co/self-hpo" target="_blank" rel="noopener">Models &amp; data ↗</a>
+                <a href="https://weizhepei.com/blog/self-hpo/" target="_blank" rel="noopener">Blog ↗</a>
+              </p>
+            </div>
+          </article>
+
           <article class="project-entry">
             <div>
               <span class="project-kind">2026-09 · Environment generation</span>
