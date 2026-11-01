@@ -1,6 +1,7 @@
 # Orchard-Agentic
 
 <p align="center">
+  <a href="https://microsoft.github.io/Orchard-Agentic/"><img src="https://img.shields.io/badge/%F0%9F%8C%90%20Project-Page-blue" alt="Project page"></a>
   <a href="https://arxiv.org/abs/2605.15040"><img src="https://img.shields.io/badge/arXiv-2605.15040-b31b1b.svg" alt="arXiv"></a>
   <a href="https://huggingface.co/datasets/microsoft/Orchard"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Research-Data-yellow" alt="Research data on Hugging Face"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
@@ -10,7 +11,8 @@
 It brings together research projects, shared infrastructure, datasets, training
 recipes, and evaluation artifacts. The collection includes the foundational
 paper [*Orchard: An Open-Source Agentic Modeling Framework*](https://arxiv.org/abs/2605.15040)
-and subsequent projects such as OpenWebRL and OpenForge RL.
+and the projects that followed it, from OpenWebRL and OpenForge RL to Self-HPO
+and AutoEnvScaling (see [Projects](#projects)).
 
 **Orchard Env**, **Orchard-SWE**, **Orchard-GUI**, and **Orchard-Claw** are
 established names introduced by the Orchard research and are retained here.
@@ -34,10 +36,61 @@ domains, and projects instead of being rebuilt for each new study.
 | **Orchard Eval** ([`orchard_eval/`](orchard_eval/)) | Evaluation. Runs any agent harness — `codex`, `pi`, `mini-swe-agent`, … — against SWE-bench Verified on Orchard Env sandboxes, graded by the official SWE-bench harness. See [Evaluation](#evaluation). |
 | **Trainer** (`trainer/slime/`) | RL training stack — a [slime](https://github.com/THUDM/slime) fork vendored as a git submodule ([MSR-Orchard/slime](https://github.com/MSR-Orchard/slime)), with Orchard rollout code under [`examples/orchard_swe/`](https://github.com/MSR-Orchard/slime/tree/main/examples/orchard_swe) and [`examples/orchard_gui/`](https://github.com/MSR-Orchard/slime/tree/main/examples/orchard_gui). See [Training](#training). |
 
+- 🌐 **Project page:** [microsoft.github.io/Orchard-Agentic](https://microsoft.github.io/Orchard-Agentic/) — news, projects, and people across the collection
 - 📄 **Paper:** [*Orchard: An Open-Source Agentic Modeling Framework*](https://arxiv.org/abs/2605.15040) (Peng et al., arXiv:2605.15040)
 - 🤗 **Research data:** [Hugging Face dataset](https://huggingface.co/datasets/microsoft/Orchard) — `swe` (107K SWE trajectories) and `gui` (3,070 multimodal browser-navigation rollouts) subsets
 
 ## News
+
+- **[2026-10] 🎉 We are excited to release [Self-HPO](https://arxiv.org/abs/2610.22791)**
+  ([code](https://github.com/MSR-Orchard/Self-HPO) ·
+  [models & data](https://huggingface.co/self-hpo) ·
+  [blog](https://weizhepei.com/blog/self-hpo/)), which co-evolves a coding
+  agent's *harness* and *policy* with no external model. Each round, the policy
+  reads its own failures and rewrites the harness, then RL trains the policy
+  under that harness, so the harness writer improves along with the policy.
+  Every task runs in an Orchard Env sandbox. Qwen3.5-35B-A3B goes from **61.0**
+  to **69.5** on SWE-bench Verified and from **57.8** to **64.8** averaged over
+  SWE-bench Verified, Multilingual, and Pro — the latter two never seen in
+  training.
+
+- **[2026-09] 🎉 We are excited to release [AutoEnvScaling](https://arxiv.org/abs/2610.14163)**
+  ([code](https://github.com/MSR-Orchard/AutoEnvScaling) ·
+  [project page](https://microsoft.github.io/Orchard-Agentic/autoenvscaling/)),
+  which treats building RL environments as a terminal task. A proposer agent
+  reads the solver's rollouts and builds new verifiable environments in a
+  sandbox, and only environments that validate and suit the current solver are
+  admitted. Because building and solving environments are both terminal tasks,
+  one open-weight model can play both roles: with Qwen3.6-35B-A3B as proposer
+  and solver, Terminal-Bench 2.1 rises from **41.1** to **53.3**.
+
+- **[2026-09] 🎉 We are excited to release [SecureVibe](https://arxiv.org/abs/2609.38606)**
+  ([code](https://github.com/MSR-Orchard/SecureVibe) ·
+  [project page](https://microsoft.github.io/Orchard-Agentic/securevibe/) ·
+  [data](https://huggingface.co/datasets/dqwang122/SafeVibe)) **and
+  [SecureVibeEval](https://github.com/MSR-Orchard/SecureVibeEval)**. SecureVibe
+  trains coding agents to plan, code, and test for implicit security
+  requirements, using SFT followed by RL or on-policy distillation; it raises
+  security pass@1 on BaxBench by **6.9** points and functional pass@1 on
+  SusVibes by **13.6** points, and transfers to SWE-bench Verified (**+4.1**).
+  SecureVibeEval runs endpoint models and coding CLIs — Claude Code, Codex,
+  Copilot, Gemini, Pi — on PatchEval-Gen, AutoBaxBench, BaxBench, and SusVibes.
+
+- **[2026-09] 🎉 We are excited to release [ExecCritic](https://arxiv.org/abs/2609.09133)**
+  ([code](https://github.com/MSR-Orchard/execcritic)), which separates test
+  writing from repair: a Test agent writes repository-native tests, a
+  fail-closed harness freezes them, and a Repair agent revises the patch from
+  their execution feedback. Training each role separately on Qwen3.5-35B-A3B
+  reaches **72.6%** on SWE-bench Verified, an **11.4-point** gain over the
+  no-test baseline.
+
+- **[2026-08] 🎉 We are excited to release [TRACE](https://arxiv.org/abs/2607.13988)**
+  ([code](https://github.com/MSR-Orchard/trace)), which assigns credit to each
+  turn of a long-horizon agent at tool-call boundaries. A frozen reference
+  model scores how likely the gold answer becomes after each observation, and
+  the change becomes that turn's reward, with no extra critic or process
+  labels. With pure RL, BrowseComp-Plus rises from **7.2** to **35.6** at 4B and
+  from **8.4** to **42.6** at 30B-A3B.
 
 - **[2026-07] 🎉 We are excited to release [OpenForge RL](https://arxiv.org/abs/2607.21557)**
   ([code](https://github.com/MSR-Orchard/OpenForge-RL) · [details](projects/openforge-rl.md)),
@@ -71,13 +124,21 @@ domains, and projects instead of being rebuilt for each new study.
   introducing Orchard Env and the Orchard-SWE, Orchard-GUI, and Orchard-Claw
   research recipes.
 
-## Projects built on Orchard
+## Projects
 
-[`projects/`](projects/) indexes every project that builds on Orchard Env — the
-three recipes below plus follow-on work with its own papers and repositories.
+Research projects in the Orchard-Agentic collection, newest first. The
+[project page](https://microsoft.github.io/Orchard-Agentic/#projects) lists the
+same set, and [`projects/`](projects/) has longer write-ups of the projects
+built directly on Orchard Env.
 
 | Project | Domain | Paper | Code |
 | --- | --- | --- | --- |
+| [**Self-HPO**](https://weizhepei.com/blog/self-hpo/) — co-evolves the agent's *harness* and *policy* with no external model | Software engineering | [arXiv:2610.22791](https://arxiv.org/abs/2610.22791) | [MSR-Orchard/Self-HPO](https://github.com/MSR-Orchard/Self-HPO) |
+| [**AutoEnvScaling**](https://microsoft.github.io/Orchard-Agentic/autoenvscaling/) — terminal agents build their own RL environments | Terminal agents | [arXiv:2610.14163](https://arxiv.org/abs/2610.14163) | [MSR-Orchard/AutoEnvScaling](https://github.com/MSR-Orchard/AutoEnvScaling) |
+| [**SecureVibe**](https://microsoft.github.io/Orchard-Agentic/securevibe/) — SFT, RL, and on-policy distillation for security-aware coding | Secure coding | [arXiv:2609.38606](https://arxiv.org/abs/2609.38606) | [MSR-Orchard/SecureVibe](https://github.com/MSR-Orchard/SecureVibe) |
+| **SecureVibeEval** — security benchmarks for endpoint models and coding CLIs | Secure coding · evaluation | [arXiv:2609.38606](https://arxiv.org/abs/2609.38606) | [MSR-Orchard/SecureVibeEval](https://github.com/MSR-Orchard/SecureVibeEval) |
+| **ExecCritic** — learned tests and feedback-guided repair | Software engineering | [arXiv:2609.09133](https://arxiv.org/abs/2609.09133) | [MSR-Orchard/execcritic](https://github.com/MSR-Orchard/execcritic) |
+| **TRACE** — turn-level credit assignment at tool-call boundaries | Search agents | [arXiv:2607.13988](https://arxiv.org/abs/2607.13988) | [MSR-Orchard/trace](https://github.com/MSR-Orchard/trace) |
 | [**OpenForge RL**](projects/openforge-rl.md) — training inside the *real* deployment harness | CLI/tool agents · computer use · browser | [arXiv:2607.21557](https://arxiv.org/abs/2607.21557) | [MSR-Orchard/OpenForge-RL](https://github.com/MSR-Orchard/OpenForge-RL) |
 | [**OpenWebRL**](projects/openwebrl.md) — online multi-turn RL on *live* websites | Browser use | [arXiv:2606.02031](https://arxiv.org/abs/2606.02031) | [OpenWebRL/OpenWebRL](https://github.com/OpenWebRL/OpenWebRL) |
 | **Orchard-SWE · Orchard-GUI · Orchard-Claw** | SWE · browser · CLI/tool agents | [arXiv:2605.15040](https://arxiv.org/abs/2605.15040) | [`trainer/slime/`](https://github.com/MSR-Orchard/slime) |
