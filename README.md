@@ -11,8 +11,8 @@
 It brings together research projects, shared infrastructure, datasets, training
 recipes, and evaluation artifacts. The collection includes the foundational
 paper [*Orchard: An Open-Source Agentic Modeling Framework*](https://arxiv.org/abs/2605.15040)
-and the projects that followed it, from OpenWebRL and OpenForge RL to Self-HPO
-and AutoEnvScaling (see [Projects](#projects)).
+and the projects that followed it, from OpenWebRL and OpenForge RL to Self-HPO,
+AutoEnvScaling, and WildAWM (see [Projects](#projects)).
 
 **Orchard Env**, **Orchard-SWE**, **Orchard-GUI**, and **Orchard-Claw** are
 established names introduced by the Orchard research and are retained here.
@@ -41,6 +41,20 @@ domains, and projects instead of being rebuilt for each new study.
 - 🤗 **Research data:** [Hugging Face dataset](https://huggingface.co/datasets/microsoft/Orchard) — `swe` (107K SWE trajectories) and `gui` (3,070 multimodal browser-navigation rollouts) subsets
 
 ## News
+
+- **[2026-10] 🎉 We are excited to release [WildAWM](https://arxiv.org/abs/2610.26828)**
+  ([code](https://github.com/MSR-Orchard/WildAWM) ·
+  [project page](https://msr-orchard.github.io/WildAWM/) ·
+  [models & data](https://huggingface.co/collections/ChilleD/agent-world-model-in-the-wild)),
+  which synthesizes whole personal computers as training environments for
+  computer-use agents. Each persona's computer evolves day by day with mirrored
+  websites, MCP services, and local files, and its cross-agent-interface (XAI)
+  tasks combine GUI, MCP, and CLI. The pipeline runs entirely on open-source
+  models and yields 341 long-horizon environment–task pairs, of which
+  GPT-6-Astra solves only about **60%**. Trained only in these synthetic worlds,
+  Qwen3.6-35B-A3B and Qwen3.5-4B improve on all 8 OOD web,
+  claw, and computer-use agent benchmarks, by **+10.58** and **+8.21** points on
+  average.
 
 - **[2026-10] 🎉 We are excited to release [Self-HPO](https://arxiv.org/abs/2610.22791)**
   ([code](https://github.com/MSR-Orchard/Self-HPO) ·
@@ -133,6 +147,7 @@ built directly on Orchard Env.
 
 | Project | Domain | Paper | Code |
 | --- | --- | --- | --- |
+| [**WildAWM**](https://msr-orchard.github.io/WildAWM/) — synthesized personal-computer worlds and cross-interface tasks for computer-use agents | Computer use · environment synthesis | [arXiv:2610.26828](https://arxiv.org/abs/2610.26828) | [MSR-Orchard/WildAWM](https://github.com/MSR-Orchard/WildAWM) |
 | [**Self-HPO**](https://weizhepei.com/blog/self-hpo/) — co-evolves the agent's *harness* and *policy* with no external model | Software engineering | [arXiv:2610.22791](https://arxiv.org/abs/2610.22791) | [MSR-Orchard/Self-HPO](https://github.com/MSR-Orchard/Self-HPO) |
 | [**AutoEnvScaling**](https://microsoft.github.io/Orchard-Agentic/autoenvscaling/) — terminal agents build their own RL environments | Terminal agents | [arXiv:2610.14163](https://arxiv.org/abs/2610.14163) | [MSR-Orchard/AutoEnvScaling](https://github.com/MSR-Orchard/AutoEnvScaling) |
 | [**SecureVibe**](https://microsoft.github.io/Orchard-Agentic/securevibe/) — SFT, RL, and on-policy distillation for security-aware coding | Secure coding | [arXiv:2609.38606](https://arxiv.org/abs/2609.38606) | [MSR-Orchard/SecureVibe](https://github.com/MSR-Orchard/SecureVibe) |
